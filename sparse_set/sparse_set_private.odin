@@ -16,17 +16,15 @@ Sparse_Set :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Sparse_S
 }
 
 
-/*
+/*	###################################################################
 	INIT
-*/
+###################################################################  */
 
-/*
-Initialises Sparse_Set_Auto.
-@param sset: pointer to Sparse_Set_Auto
-@param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
 
-Set's next_id (exclusive to Sparse_Set_Auto) to 0 and calls common Sparse_Set initialisation (see _init)
-*/
+// Initialises Sparse_Set_Auto.
+// @param sset: pointer to Sparse_Set_Auto
+// @param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
+// Set's next_id (exclusive to Sparse_Set_Auto) to 0 and calls common Sparse_Set initialisation (see _init)
 init_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	allocator := context.allocator,
@@ -35,13 +33,11 @@ init_sset_auto :: proc(
 	_init(&sset.set, allocator)
 }
 
-/*
-Initialises Sparse_Set_Manual.
-@param sset: pointer to Sparse_Set_Manual
-@param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
 
-Calls common Sparse_Set initialisation (see _init)
-*/
+// Initialises Sparse_Set_Manual.
+// @param sset: pointer to Sparse_Set_Manual
+// @param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
+// Calls common Sparse_Set initialisation (see _init)
 init_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	allocator := context.allocator,
@@ -49,15 +45,13 @@ init_sset_manual :: proc(
 	_init(&sset.set, allocator)
 }
 
-/*
-Initialises Sparse_Set.
-@param sset: pointer to Sparse_Set
-@param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
 
-Creates dense and sparse using provided allocator.
-Set's count to 0.
-Checks _is_init flag (it will be considered initialised from now)
-*/
+// Initialises Sparse_Set.
+// @param sset: pointer to Sparse_Set
+// @param allocator: a custom allocator for dense and sparse dynamic arrays. Defaults to context.allocator.
+// Creates dense and sparse using provided allocator.
+// Set's count to 0.
+// Checks _is_init flag (it will be considered initialised from now)
 _init :: proc(
 	sset: ^Sparse_Set($T),
 	allocator := context.allocator,
@@ -71,22 +65,19 @@ _init :: proc(
 }
 
 
-/*
+/*	###################################################################
 	INSERT
-*/
+###################################################################  */
 
-/*
-Inserts item to Sparse_Set_Auto.
-@param sset: pointer to Sparse_Set_Auto
-@param item: element to be inserted.
 
-Creates ids automatically, ids are never reused.
-	There are 9.2 * 10¹⁸ available ids and it's virtually impossible to run out of them
-Increases count and next_id values.
-Returns a handle to inserted element
-
-Algorithm complexity: O(1)
-*/
+// Inserts item to Sparse_Set_Auto.
+// @param sset: pointer to Sparse_Set_Auto
+// @param item: element to be inserted.
+// Creates ids automatically, ids are never reused.
+// 	There are 9.2 * 10¹⁸ available ids and it's virtually impossible to run out of them
+// Increases count and next_id values.
+// Returns a handle to inserted element
+// Algorithm complexity: O(1)
 insert_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	item: T,
@@ -128,17 +119,14 @@ insert_sset_auto :: proc(
 	return handle, true
 }
 
-/*
-Inserts item to Sparse_Set_Manual if there's not a valid element with given handle.id.
-@param sset: pointer to Sparse_Set_Manual
-@param item: element to be inserted.
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Increases count value.
-Returns a handle to inserted element with id equals to provided handle.id
-
-Algorithm complexity: O(1)
-*/
+// Inserts item to Sparse_Set_Manual if there's not a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set_Manual
+// @param item: element to be inserted.
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Increases count value.
+// Returns a handle to inserted element with id equals to provided handle.id
+// Algorithm complexity: O(1)
 insert_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	item: T,
@@ -174,18 +162,16 @@ insert_sset_manual :: proc(
 }
 
 
-/*
+/*	###################################################################
 	REMOVE
-*/
+###################################################################  */
 
-/*
-Removes item of Sparse_Set_Auto if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set_Auto
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set remove (see _remove).
-Algorithm complexity: O(1)
-*/
+// Removes item of Sparse_Set_Auto if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set_Auto
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set remove (see _remove).
+// Algorithm complexity: O(1)
 remove_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	handle: Sparse_Set_Handle,
@@ -193,14 +179,12 @@ remove_sset_auto :: proc(
 	_remove(&sset.set, handle)
 }
 
-/*
-Removes item of Sparse_Set_Manual if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set_Manual
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set remove (see _remove).
-Algorithm complexity: O(1)
-*/
+// Removes item of Sparse_Set_Manual if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set_Manual
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set remove (see _remove).
+// Algorithm complexity: O(1)
 remove_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	handle: Sparse_Set_Handle,
@@ -208,14 +192,12 @@ remove_sset_manual :: proc(
 	_remove(&sset.set, handle)
 }
 
-/*
-Removes item of Sparse_Set if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Swaps removed element with last element of dense array preventing complex resizing and moving elements.
-Algorithm complexity: O(1)
-*/
+// Removes item of Sparse_Set if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Swaps removed element with last element of dense array preventing complex resizing and moving elements.
+// Algorithm complexity: O(1)
 _remove :: proc(
 	sset: ^Sparse_Set($T),
 	handle: Sparse_Set_Handle,
@@ -236,20 +218,17 @@ _remove :: proc(
 }
 
 
-/*
+/*	###################################################################
 	GET
-*/
+###################################################################  */
 
-/*
-Gets and item of Sparse_Set_Auto if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set_Auto
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set get (see _get).
-Returns a pointer to the element
-
-Algorithm complexity: O(1)
-*/
+// Gets and item of Sparse_Set_Auto if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set_Auto
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set get (see _get).
+// Returns a pointer to the element
+// Algorithm complexity: O(1)
 get_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	handle: Sparse_Set_Handle,
@@ -260,16 +239,13 @@ get_sset_auto :: proc(
 	return _get(&sset.set, handle)
 }
 
-/*
-Gets and item of Sparse_Set_Manual if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set_Manual
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set get (see _get).
-Returns a pointer to the element
-
-Algorithm complexity: O(1)
-*/
+// Gets and item of Sparse_Set_Manual if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set_Manual
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set get (see _get).
+// Returns a pointer to the element
+// Algorithm complexity: O(1)
 get_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	handle: Sparse_Set_Handle,
@@ -280,15 +256,12 @@ get_sset_manual :: proc(
 	return _get(&sset.set, handle)
 }
 
-/*
-Gets and item of Sparse_Set if there's a valid element with given handle.id.
-@param sset: pointer to Sparse_Set
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Returns a pointer to the element
-
-Algorithm complexity: O(1)
-*/
+// Gets and item of Sparse_Set if there's a valid element with given handle.id.
+// @param sset: pointer to Sparse_Set
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Returns a pointer to the element
+// Algorithm complexity: O(1)
 _get :: proc(
 	sset: ^Sparse_Set($T),
 	handle: Sparse_Set_Handle,
@@ -302,22 +275,18 @@ _get :: proc(
 }
 
 
-/*
+/*	###################################################################
 	GET ALL HANDLES
-*/
+###################################################################  */
 
-/*
-Gets handles for all valid elements of Sparse_Set_Auto.
-@param sset: pointer to Sparse_Set_Auto
 
-Uses _map_field.
-Calls common Sparse_Set _get_all_handles.
-
-Returns a slice of selected handles
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Gets handles for all valid elements of Sparse_Set_Auto.
+// @param sset: pointer to Sparse_Set_Auto
+// Uses _map_field.
+// Calls common Sparse_Set _get_all_handles.
+// Returns a slice of selected handles
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 get_all_handles_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 ) -> (
@@ -327,18 +296,14 @@ get_all_handles_sset_auto :: proc(
 	return _get_all_handles(&sset.set)
 }
 
-/*
-Gets handles for all valid elements of Sparse_Set_Manual.
-@param sset: pointer to Sparse_Set_Manual
 
-Uses _map_field.
-Calls common Sparse_Set _get_all_handles.
-
-Returns a slice of selected handles
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Gets handles for all valid elements of Sparse_Set_Manual.
+// @param sset: pointer to Sparse_Set_Manual
+// Uses _map_field.
+// Calls common Sparse_Set _get_all_handles.
+// Returns a slice of selected handles
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 get_all_handles_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 ) -> (
@@ -348,17 +313,13 @@ get_all_handles_sset_manual :: proc(
 	return _get_all_handles(&sset.set)
 }
 
-/*
-Gets handles for all valid elements of Sparse_Set.
-@param sset: pointer to Sparse_Set
 
-Uses _map_field with tranform proc that returns Sparse_Set_Handle
-
-Returns a slice of selected handles
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Gets handles for all valid elements of Sparse_Set.
+// @param sset: pointer to Sparse_Set
+// Uses _map_field with tranform proc that returns Sparse_Set_Handle
+// Returns a slice of selected handles
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 _get_all_handles :: proc(
 	sset: ^Sparse_Set($T),
 ) -> (
@@ -378,22 +339,18 @@ _get_all_handles :: proc(
 }
 
 
-/*
+/*	###################################################################
 	MAP FIELD
-*/
+###################################################################  */
 
-/*
-Maps properties for all valid elements of Sparse_Set_Auto.
-@param sset: pointer to Sparse_Set_Auto
-@param transform: proc that get's T value and returns given property
 
-Calls common Sparse_Set _map_field.
-
-Returns a slice of selected fields
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Maps properties for all valid elements of Sparse_Set_Auto.
+// @param sset: pointer to Sparse_Set_Auto
+// @param transform: proc that get's T value and returns given property
+// Calls common Sparse_Set _map_field.
+// Returns a slice of selected fields
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 map_field_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	transform: proc(val: T) -> $R,
@@ -404,18 +361,14 @@ map_field_sset_auto :: proc(
 	return _map_field(&sset.set, transform)
 }
 
-/*
-Maps properties for all valid elements of Sparse_Set_Manual.
-@param sset: pointer to Sparse_Set_Manual
-@param transform: proc that get's T value and returns given property
 
-Calls common Sparse_Set _map_field.
-
-Returns a slice of selected fields
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Maps properties for all valid elements of Sparse_Set_Manual.
+// @param sset: pointer to Sparse_Set_Manual
+// @param transform: proc that get's T value and returns given property
+// Calls common Sparse_Set _map_field.
+// Returns a slice of selected fields
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 map_field_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	transform: proc(val: T) -> $R,
@@ -426,16 +379,13 @@ map_field_sset_manual :: proc(
 	return _map_field(&sset.set, transform)
 }
 
-/*
-Maps properties for all valid elements of Sparse_Set.
-@param sset: pointer to Sparse_Set
-@param transform: proc that get's T value and returns given property
 
-Returns a slice of selected fields
-The slice is allocated and it's memory should be released when not needed (delete(slice))
-
-Algorithm complexity: O(N)
-*/
+// Maps properties for all valid elements of Sparse_Set.
+// @param sset: pointer to Sparse_Set
+// @param transform: proc that get's T value and returns given property
+// Returns a slice of selected fields
+// The slice is allocated and it's memory should be released when not needed (delete(slice))
+// Algorithm complexity: O(N)
 _map_field :: proc(
 	sset: ^Sparse_Set($T),
 	transform: proc(val: T) -> $R,
@@ -460,21 +410,17 @@ _map_field :: proc(
 }
 
 
-/*
+/*	###################################################################
 	CONTAINS
-*/
+###################################################################  */
 
-/*
-Checks if there's a valid element with given handle in Sparse_Set_Auto.
-@param sset: pointer to Sparse_Set_Auto
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set _contains.
-
-Returns true if there's a valid element with given handle in Sparse_Set
-
-Algorithm complexity: O(1)
-*/
+// Checks if there's a valid element with given handle in Sparse_Set_Auto.
+// @param sset: pointer to Sparse_Set_Auto
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set _contains.
+// Returns true if there's a valid element with given handle in Sparse_Set
+// Algorithm complexity: O(1)
 contains_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 	handle: Sparse_Set_Handle,
@@ -482,17 +428,13 @@ contains_sset_auto :: proc(
 	return _contains(&sset.set, handle)
 }
 
-/*
-Checks if there's a valid element with given handle in Sparse_Set_Manual.
-@param sset: pointer to Sparse_Set_Manual
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Calls common Sparse_Set _contains.
-
-Returns true if there's a valid element with given handle in Sparse_Set
-
-Algorithm complexity: O(1)
-*/
+// Checks if there's a valid element with given handle in Sparse_Set_Manual.
+// @param sset: pointer to Sparse_Set_Manual
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Calls common Sparse_Set _contains.
+// Returns true if there's a valid element with given handle in Sparse_Set
+// Algorithm complexity: O(1)
 contains_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 	handle: Sparse_Set_Handle,
@@ -500,15 +442,12 @@ contains_sset_manual :: proc(
 	return _contains(&sset.set, handle)
 }
 
-/*
-Checks if there's a valid element with given handle in Sparse_Set.
-@param sset: pointer to Sparse_Set
-@param handle: Sparse_Set_Handle containing the id of the element
 
-Returns true if there's a valid element with given handle in Sparse_Set
-
-Algorithm complexity: O(1)
-*/
+// Checks if there's a valid element with given handle in Sparse_Set.
+// @param sset: pointer to Sparse_Set
+// @param handle: Sparse_Set_Handle containing the id of the element
+// Returns true if there's a valid element with given handle in Sparse_Set
+// Algorithm complexity: O(1)
 _contains :: proc(
 	sset: ^Sparse_Set($T),
 	handle: Sparse_Set_Handle,
@@ -523,64 +462,52 @@ _contains :: proc(
 }
 
 
-/*
+/*	###################################################################
 	RESET
-*/
+###################################################################  */
 
-/*
-Resets Sparse_Set_Auto while keeping memory allocated.
-@param sset: pointer to Sparse_Set_Auto
 
-Calls common Sparse_Set _reset.
-
-Algorithm complexity: O(1)
-*/
+// Resets Sparse_Set_Auto while keeping memory allocated.
+// @param sset: pointer to Sparse_Set_Auto
+// Calls common Sparse_Set _reset.
+// Algorithm complexity: O(1)
 reset_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 ) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	_reset(&sset.set)
 }
 
-/*
-Resets Sparse_Set_Manual while keeping memory allocated.
-@param sset: pointer to Sparse_Set_Manual
 
-Calls common Sparse_Set _reset.
-
-Algorithm complexity: O(1)
-*/
+// Resets Sparse_Set_Manual while keeping memory allocated.
+// @param sset: pointer to Sparse_Set_Manual
+// Calls common Sparse_Set _reset.
+// Algorithm complexity: O(1)
 reset_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 ) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	_reset(&sset.set)
 }
 
-/*
-Resets Sparse_Set while keeping memory allocated.
-@param sset: pointer to Sparse_Set
 
-Sets count to 0. That way every item in sset will be invalidated.
-Ideal for cleaning elements but keep use of sparse set possible
-
-Algorithm complexity: O(1)
-*/
+// Resets Sparse_Set while keeping memory allocated.
+// @param sset: pointer to Sparse_Set
+// Sets count to 0. That way every item in sset will be invalidated.
+// Ideal for cleaning elements but keep use of sparse set possible
+// Algorithm complexity: O(1)
 _reset :: proc(sset: ^Sparse_Set($T)) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	sset.count = 0
 }
 
 
-/*
+/*	###################################################################
 	DESTROY
-*/
+###################################################################  */
 
-/*
-Releases Sparse_Set_Auto allocated memory.
-@param sset: pointer to Sparse_Set_Auto
 
-Calls common Sparse_Set _destroy.
-
-Set next_id back to 0
-*/
+// Releases Sparse_Set_Auto allocated memory.
+// @param sset: pointer to Sparse_Set_Auto
+// Calls common Sparse_Set _destroy.
+// Set next_id back to 0
 destroy_sset_auto :: proc(
 	sset: ^Sparse_Set_Auto($T),
 ) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
@@ -588,28 +515,22 @@ destroy_sset_auto :: proc(
 	sset.next_id = 0
 }
 
-/*
-Releases Sparse_Set_Manual allocated memory.
-@param sset: pointer to Sparse_Set_Manual
 
-Calls common Sparse_Set _destroy.
-*/
+// Releases Sparse_Set_Manual allocated memory.
+// @param sset: pointer to Sparse_Set_Manual
+// Calls common Sparse_Set _destroy.
 destroy_sset_manual :: proc(
 	sset: ^Sparse_Set_Manual($T),
 ) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	_destroy(&sset.set)
 }
 
-/*
-Releases Sparse_Set allocated memory.
-@param sset: pointer to Sparse_Set
 
-Releases dense and sparse.
-
-Set values to default.
-
-Destroyed Sparse Sets can still be used, but they will be initilised again.
-*/
+// Releases Sparse_Set allocated memory.
+// @param sset: pointer to Sparse_Set
+// Releases dense and sparse.
+// Set values to default.
+// Destroyed Sparse Sets can still be used, but they will be initilised again.
 _destroy :: proc(sset: ^Sparse_Set($T)) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	delete(sset.dense)
 	delete(sset.sparse)
