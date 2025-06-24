@@ -15,14 +15,6 @@ import vmem "core:mem/virtual"
 Entity :: sset.Sparse_Set_Handle
 
 
-// Component_Data is a supertype of Sparse_Set_Handle (see Entity) therefore it can be stored in a Sparse_Set_Handle.
-// Also, it's data is a rawptr which allows to use different size component sparse sets in the same map.
-Component_Data :: struct {
-	data:         rawptr,
-	using entity: Entity,
-}
-
-
 // World structure, might be instanced and destroyed after use.
 // Has the following fields:
 // entities: Just a Sparse_Set_Auto(Entity) for storing entities and getting new ids. Prevents id reuse.
@@ -35,29 +27,12 @@ World :: struct {
 }
 
 
-// Query structure, will be used for querying entities for systems, currently it only has required component types
-// TODO: Support withnone and withany
-Query :: struct {
-	world:   ^World,
-	withall: []typeid,
-}
-
-
 /*  ###################################################################
 	WORLD
 ###################################################################  */
 
 
-// Initializes the world.
-init_world :: proc(world: ^World) {
-	if world.arena.curr_block == nil {
-		arena_err := vmem.arena_init_growing(&world.arena)
-		assert(arena_err == nil)
-	}
-}
-
-
-// Destroys the entities sparse set, the componentes map and it's speciallized sparse sets. 
+// Destroys the entities sparse set, the components mapm it's speciallized sparse sets and the components arena. 
 // Should be called when the world is no longer needed, releases all allocated memory.
 destroy_world :: proc(world: ^World) {
 	for comptype, &compset in world.components {
@@ -67,13 +42,6 @@ destroy_world :: proc(world: ^World) {
 	sset.destroy(&world.entities)
 	vmem.arena_destroy(&world.arena)
 	vmem.arena_free_all(&world.arena)
-}
-
-
-// Should not be called manually, that's why it's in a private scope.
-// Need to double check if it's really necessary
-init_component_storage :: proc(world: ^World, type: typeid) {
-	world.components[type] = sset.Sparse_Set_Manual(Component_Data){}
 }
 
 
@@ -112,7 +80,7 @@ destroy_entity :: proc(world: ^World, entity: Entity) {
 // If there is not, it will then create said sparse set.
 add_component :: proc(world: ^World, entity: Entity, component: $T) -> bool {
 	init_world(world)
-	
+
 	if T not_in world.components {
 		init_component_storage(world, T)
 	}
@@ -146,9 +114,18 @@ get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 ###################################################################  */
 
 
+// Used to build a query
+build_query :: proc(world: ^World, withall: []typeid) -> Query {
+	return Query {
+		world = world,
+		withall = withall
+	}
+}
+
+
 // Query the entities based on given query.
 // It's used for systems.
-query_entities :: proc(q: Query) -> []Entity {
+query_system :: proc(q: Query, system: proc(world: ^World, entity: Entity)) {
 	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
 	for type in q.withall {
 		set := &q.world.components[type]
@@ -157,7 +134,6 @@ query_entities :: proc(q: Query) -> []Entity {
 		}
 	}
 
-	result: [dynamic]Entity
 	handles, _ := sset.get_all_handles(smallest_set)
 	defer delete(handles)
 
@@ -171,8 +147,8 @@ query_entities :: proc(q: Query) -> []Entity {
 			}
 		}
 
-		if has_all do append(&result, handle)
+		if has_all {
+			system(q.world, handle)
+		}
 	}
-
-	return result[:]
 }
