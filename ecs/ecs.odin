@@ -25,15 +25,19 @@ Component_Data :: struct {
 // Has the following fields:
 // entities: Just a Sparse_Set_Auto(Entity) for storing entities and getting new ids. Prevents id reuse.
 // components: a map of typeid to Component_Data (storing components of different types and their respective handles.)
+// components_raw: a dynamic array of rawptr (every component data is stored in it making easy to free the memory)
 World :: struct {
-	entities:   sset.Sparse_Set_Auto(Entity),
-	components: map[typeid]sset.Sparse_Set_Manual(Component_Data),
+	entities:       sset.Sparse_Set_Auto(Entity),
+	components:     map[typeid]sset.Sparse_Set_Manual(Component_Data),
+	components_raw: [dynamic]rawptr,
 }
 
 
+// Query structure, will be used for querying entities for systems, currently it only has required component types
+// TODO: Support withnone and withany
 Query :: struct {
 	world:    ^World,
-	required: []typeid,
+	withall: []typeid,
 }
 
 
@@ -48,6 +52,10 @@ destroy_world :: proc(world: ^World) {
 	for comptype, &compset in world.components {
 		sset.destroy(&compset)
 	}
+    for ptr in world.components_raw {
+        free(ptr)
+    }
+    delete(world.components_raw)
 	delete(world.components)
 	sset.destroy(&world.entities)
 }
@@ -98,11 +106,13 @@ add_component :: proc(world: ^World, entity: Entity, component: ^$T) -> bool {
 		init_component_storage(world, T)
 	}
 
-	data_ptr := component
+    raw_ptr := (rawptr)(component)
+
+    append(&world.components_raw, raw_ptr)
 
 	_, ok := sset.insert(
 		&world.components[T],
-		Component_Data{data = data_ptr, id = entity.id},
+		Component_Data{data = raw_ptr, id = entity.id},
 		entity,
 	)
 
@@ -125,31 +135,33 @@ get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 ###################################################################  */
 
 
-query_entities :: proc(q : Query) -> []Entity {
-    smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
-    for type in q.required {
-        set := &q.world.components[type]
-        if smallest_set == nil || set.count < smallest_set.count {
-            smallest_set = set
-        }
-    }
+// Query the entities based on given query.
+// It's used for systems.
+query_entities :: proc(q: Query) -> []Entity {
+	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
+	for type in q.withall {
+		set := &q.world.components[type]
+		if smallest_set == nil || set.count < smallest_set.count {
+			smallest_set = set
+		}
+	}
 
-    result : [dynamic]Entity
-    handles, _ := sset.get_all_handles(smallest_set)
-    defer delete(handles)
+	result: [dynamic]Entity
+	handles, _ := sset.get_all_handles(smallest_set)
+	defer delete(handles)
 
-    for handle in handles {
-        has_all := true
+	for handle in handles {
+		has_all := true
 
-        for type in q.required {
-            if !sset.contains(&q.world.components[type], handle) {
-                has_all = false
-                break
-            }
-        }
+		for type in q.withall {
+			if !sset.contains(&q.world.components[type], handle) {
+				has_all = false
+				break
+			}
+		}
 
-        if has_all do append(&result, handle)
-    }
+		if has_all do append(&result, handle)
+	}
 
-    return result[:]
+	return result[:]
 }
