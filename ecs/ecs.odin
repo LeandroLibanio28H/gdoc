@@ -2,6 +2,8 @@ package ecs
 
 
 import sset "../sparse_set"
+import mem "core:mem"
+import vmem "core:mem/virtual"
 
 
 /*  ###################################################################
@@ -27,16 +29,16 @@ Component_Data :: struct {
 // components: a map of typeid to Component_Data (storing components of different types and their respective handles.)
 // components_raw: a dynamic array of rawptr (every component data is stored in it making easy to free the memory)
 World :: struct {
-	entities:       sset.Sparse_Set_Auto(Entity),
-	components:     map[typeid]sset.Sparse_Set_Manual(Component_Data),
-	components_raw: [dynamic]rawptr,
+	arena:      vmem.Arena,
+	entities:   sset.Sparse_Set_Auto(Entity),
+	components: map[typeid]sset.Sparse_Set_Manual(Component_Data),
 }
 
 
 // Query structure, will be used for querying entities for systems, currently it only has required component types
 // TODO: Support withnone and withany
 Query :: struct {
-	world:    ^World,
+	world:   ^World,
 	withall: []typeid,
 }
 
@@ -46,18 +48,25 @@ Query :: struct {
 ###################################################################  */
 
 
+// Initializes the world.
+init_world :: proc(world: ^World) {
+	if world.arena.curr_block == nil {
+		arena_err := vmem.arena_init_growing(&world.arena)
+		assert(arena_err == nil)
+	}
+}
+
+
 // Destroys the entities sparse set, the componentes map and it's speciallized sparse sets. 
 // Should be called when the world is no longer needed, releases all allocated memory.
 destroy_world :: proc(world: ^World) {
 	for comptype, &compset in world.components {
 		sset.destroy(&compset)
 	}
-    for ptr in world.components_raw {
-        free(ptr)
-    }
-    delete(world.components_raw)
 	delete(world.components)
 	sset.destroy(&world.entities)
+	vmem.arena_destroy(&world.arena)
+	vmem.arena_free_all(&world.arena)
 }
 
 
@@ -101,14 +110,16 @@ destroy_entity :: proc(world: ^World, entity: Entity) {
 // Adds a component to given entity.
 // Component type registration is not needed, since it will first check if there's already a sparse set for given component type in compoenents map.
 // If there is not, it will then create said sparse set.
-add_component :: proc(world: ^World, entity: Entity, component: ^$T) -> bool {
+add_component :: proc(world: ^World, entity: Entity, component: $T) -> bool {
+	init_world(world)
+	
 	if T not_in world.components {
 		init_component_storage(world, T)
 	}
 
-    raw_ptr := (rawptr)(component)
-
-    append(&world.components_raw, raw_ptr)
+	new_component := new(T, vmem.arena_allocator(&world.arena))
+	new_component^ = component
+	raw_ptr := (rawptr)(new_component)
 
 	_, ok := sset.insert(
 		&world.components[T],
