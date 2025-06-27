@@ -1,3 +1,151 @@
+/* Generic ECS implementation - By Leandro "LibanioL" Libanio (https://libaniol.com)
+
+
+Example (assumes this package is imported under the alias `ecs` and raylib is imported under the alias `rl`):
+
+	SCREEN_WIDTH :: 1280
+	SCREEN_HEIGHT :: 720
+	SECONDS_PER_UPDATE: f64 : 1.0 / 100.0
+
+	Transform :: struct {
+		position: [2]f32,
+		rotation: f32,
+	}
+
+
+	Drawable :: struct {
+		radius: f32,
+		color:  rl.Color,
+	}
+
+
+	Movement :: struct {
+		velocity: [2]f32,
+		speed:    f32,
+	}
+
+
+	Bounce :: struct {}
+
+	get_random_color :: proc() -> rl.Color {
+		return rl.Color {
+			auto_cast rand.int_max(255),
+			auto_cast rand.int_max(255),
+			auto_cast rand.int_max(255),
+			255,
+		}
+	}
+
+
+	rl.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "GDOC Test")
+
+	world := ecs.World{}
+	defer ecs.destroy_world(&world)
+
+	for _ in 0 ..< 100 {
+		entity := ecs.create_entity(&world)
+		ecs.add_component(
+			&world,
+			entity,
+			Transform{position = {rand.float32() * SCREEN_WIDTH, rand.float32() * SCREEN_HEIGHT}},
+		)
+		ecs.add_component(&world, entity, Drawable{radius = 10.0, color = get_random_color()})
+
+		ecs.add_component(
+			&world,
+			entity,
+			Movement {
+				velocity = {rand.float32_range(-1.0, 1.0), rand.float32_range(-1.0, 1.0)},
+				speed = 3,
+			},
+		)
+
+		ecs.add_component(&world, entity, Bounce{})
+	}
+
+
+	drawable_query := ecs.build_query(&world, {Transform, Drawable})
+	draw_system :: proc(world: ^ecs.World, entity: ecs.Entity) {
+		drawable := ecs.get_component(world, entity, Drawable)
+		transform := ecs.get_component(world, entity, Transform)
+
+		rl.DrawCircle(
+			auto_cast transform.position.x,
+			auto_cast transform.position.y,
+			drawable.radius,
+			drawable.color,
+		)
+	}
+
+
+	movement_query := ecs.build_query(&world, {Transform, Movement})
+	movement_system :: proc(world: ^ecs.World, entity: ecs.Entity) {
+		transform := ecs.get_component(world, entity, Transform)
+		movement := ecs.get_component(world, entity, Movement)
+
+		transform.position += linalg.normalize(movement.velocity) * movement.speed
+	}
+
+
+	bounce_query := ecs.build_query(&world, {Transform, Movement, Bounce, Drawable})
+	bounce_system :: proc(world: ^ecs.World, entity: ecs.Entity) {
+		transform := ecs.get_component(world, entity, Transform)
+		movement := ecs.get_component(world, entity, Movement)
+		drawable := ecs.get_component(world, entity, Drawable)
+
+		resolve_bounce :: proc(
+			position_axis: f32,
+			limits: f32,
+			movement_axis: ^f32,
+			drawable: ^Drawable,
+		) {
+			if position_axis > limits || position_axis < 0.0 {
+				movement_axis^ = -movement_axis^
+				drawable.color = get_random_color()
+			}
+		}
+
+		resolve_bounce(
+			transform.position.x,
+			auto_cast SCREEN_WIDTH,
+			&movement.velocity.x,
+			drawable,
+		)
+		resolve_bounce(
+			transform.position.y,
+			auto_cast SCREEN_HEIGHT,
+			&movement.velocity.y,
+			drawable,
+		)
+	}
+
+
+	previous_time := rl.GetTime()
+	lag: f64 = 0.0
+	for !rl.WindowShouldClose() {
+		current_time := rl.GetTime()
+		elapsed: f64 = current_time - previous_time
+		previous_time = current_time
+		lag += elapsed
+
+		for lag >= SECONDS_PER_UPDATE {
+			ecs.query_system(movement_query, movement_system)
+			ecs.query_system(bounce_query, bounce_system)
+			lag -= SECONDS_PER_UPDATE
+		}
+
+		rl.BeginDrawing()
+
+		rl.ClearBackground(rl.BLACK)
+
+		ecs.query_system(drawable_query, draw_system)
+		rl.DrawFPS(10, 10)
+
+		rl.EndDrawing()
+	}
+
+*/
+
 package ecs
 
 
