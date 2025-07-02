@@ -1,7 +1,7 @@
 package sparse_set
 // files ended with "test" are private
 
-import "core:fmt"
+
 import "core:testing"
 
 

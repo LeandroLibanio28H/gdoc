@@ -1,11 +1,11 @@
 /* Generic ECS implementation - By Leandro "LibanioL" Libanio (https://libaniol.com)
 
-
 Example (assumes this package is imported under the alias `ecs` and raylib is imported under the alias `rl`):
 
 	SCREEN_WIDTH :: 1280
 	SCREEN_HEIGHT :: 720
 	SECONDS_PER_UPDATE: f64 : 1.0 / 100.0
+
 
 	Transform :: struct {
 		position: [2]f32,
@@ -27,6 +27,7 @@ Example (assumes this package is imported under the alias `ecs` and raylib is im
 
 	Bounce :: struct {}
 
+
 	get_random_color :: proc() -> rl.Color {
 		return rl.Color {
 			auto_cast rand.int_max(255),
@@ -39,8 +40,10 @@ Example (assumes this package is imported under the alias `ecs` and raylib is im
 
 	rl.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "GDOC Test")
 
+
 	world := ecs.World{}
 	defer ecs.destroy_world(&world)
+
 
 	for _ in 0 ..< 100 {
 		entity := ecs.create_entity(&world)
@@ -129,16 +132,15 @@ Example (assumes this package is imported under the alias `ecs` and raylib is im
 		lag += elapsed
 
 		for lag >= SECONDS_PER_UPDATE {
-			ecs.query_system(movement_query, movement_system)
-			ecs.query_system(bounce_query, bounce_system)
+			ecs.query_basic_system(movement_query, movement_system)
+			ecs.query_basic_system(bounce_query, bounce_system)
 			lag -= SECONDS_PER_UPDATE
 		}
 
 		rl.BeginDrawing()
 
 		rl.ClearBackground(rl.BLACK)
-
-		ecs.query_system(drawable_query, draw_system)
+		ecs.query_basic_system(drawable_query, draw_system)
 		rl.DrawFPS(10, 10)
 
 		rl.EndDrawing()
@@ -180,7 +182,7 @@ World :: struct {
 ###################################################################  */
 
 
-// Destroys the entities sparse set, the components mapm it's speciallized sparse sets and the components arena. 
+// Destroys the entities sparse set, the components map and it's speciallized sparse sets and the components arena. 
 // Should be called when the world is no longer needed, releases all allocated memory.
 destroy_world :: proc(world: ^World) {
 	for comptype, &compset in world.components {
@@ -200,14 +202,14 @@ destroy_world :: proc(world: ^World) {
 
 // Creates an entity, generates a new handle and returns it.
 // world.entities is a Sparse_Set_Auto, it's responsible for generating a new unique hadle for each entity
-create_entity :: proc(world: ^World) -> Entity {
+create_entity :: proc(world: ^World) -> (Entity, bool) #optional_ok {
 	entity, ok_entity := sset.insert(&world.entities, Entity{})
-	if !ok_entity do return {}
-	return entity
+	if !ok_entity do return {}, false
+	return entity, true
 }
 
 
-// Destroys and entity, first, deletes every component it has, then, deletes the entity handle itself.
+// Destroys an entity, first, deletes every component it has, then, deletes the entity handle itself.
 destroy_entity :: proc(world: ^World, entity: Entity) {
 	for comptype, &compset in world.components {
 		if sset.contains(&compset, entity) {
@@ -247,6 +249,19 @@ add_component :: proc(world: ^World, entity: Entity, component: $T) -> bool {
 }
 
 
+// Removes a component from given entity.
+// Returns true if component was removed, false if the component was not registered in the world
+remove_component :: proc(world: ^World, entity: Entity, $T: typeid) -> bool {
+	if T not_in world.components {
+		return false
+	}
+
+	sset.remove(&world.components[T], entity)
+
+	return true
+}
+
+
 // Gets component of given type for given entity handle.
 get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 	if data, ok := sset.get(&world.components[T], entity); ok {
@@ -264,16 +279,13 @@ get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 
 // Used to build a query
 build_query :: proc(world: ^World, withall: []typeid) -> Query {
-	return Query {
-		world = world,
-		withall = withall
-	}
+	return Query{world = world, withall = withall}
 }
 
 
 // Query the entities based on given query.
-// It's used for systems.
-query_system :: proc(q: Query, system: proc(world: ^World, entity: Entity)) {
+// It's used for basic systems that don't require parameters.
+query_basic_system :: proc(q: Query, system: proc(world: ^World, entity: Entity)) {
 	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
 	for type in q.withall {
 		set := &q.world.components[type]

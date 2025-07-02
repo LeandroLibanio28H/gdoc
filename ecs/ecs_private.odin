@@ -33,7 +33,7 @@ Query :: struct {
 ###################################################################  */
 
 
-// Initializes the world.
+// Initializes the world arena allocator.
 init_world :: proc(world: ^World) {
 	if world.arena.curr_block == nil {
 		arena_err := vmem.arena_init_growing(&world.arena)
@@ -43,7 +43,7 @@ init_world :: proc(world: ^World) {
 
 
 // Should not be called manually, that's why it's in a private scope.
-// Need to double check if it's really necessary
+// Initializes the map entry for given component type (for implicit registering of components)
 init_component_storage :: proc(world: ^World, type: typeid) {
 	world.components[type] = sset.Sparse_Set_Manual(Component_Data){}
 }
