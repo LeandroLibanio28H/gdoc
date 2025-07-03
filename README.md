@@ -13,7 +13,7 @@
 
 ---
 
-## 🦉 Phylosofy
+## 🦉 Philosophy
 
 - Designed for performance, simplicity, and modularity
 - No OOP – built to work with Odin's idioms
