@@ -132,15 +132,15 @@ Example (assumes this package is imported under the alias `ecs` and raylib is im
 		lag += elapsed
 
 		for lag >= SECONDS_PER_UPDATE {
-			ecs.query_basic_system(movement_query, movement_system)
-			ecs.query_basic_system(bounce_query, bounce_system)
+			ecs.query_system(movement_query, movement_system)
+			ecs.query_system(bounce_query, bounce_system)
 			lag -= SECONDS_PER_UPDATE
 		}
 
 		rl.BeginDrawing()
 
 		rl.ClearBackground(rl.BLACK)
-		ecs.query_basic_system(drawable_query, draw_system)
+		ecs.query_system(drawable_query, draw_system)
 		rl.DrawFPS(10, 10)
 
 		rl.EndDrawing()
@@ -152,7 +152,7 @@ package ecs
 
 
 import sset "../sparse_set"
-import mem "core:mem"
+import "base:intrinsics"
 import vmem "core:mem/virtual"
 
 
@@ -278,14 +278,21 @@ get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 
 
 // Used to build a query
-build_query :: proc(world: ^World, withall: []typeid) -> Query {
-	return Query{world = world, withall = withall}
+build_query :: proc(
+	world: ^$T,
+	withall: []typeid,
+) -> Query(T) where intrinsics.type_is_subtype_of(T, World) {
+	return Query(T){world = world, withall = withall}
 }
 
 
 // Query the entities based on given query.
 // It's used for basic systems that don't require parameters.
-query_basic_system :: proc(q: Query, system: proc(world: ^World, entity: Entity)) {
+// Custom parameters/properties/worlds can be provided by subtyping World
+query_system :: proc(
+	q: Query($T),
+	system: proc(world: ^T, entity: Entity),
+) where intrinsics.type_is_subtype_of(T, World) {
 	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
 	for type in q.withall {
 		set := &q.world.components[type]

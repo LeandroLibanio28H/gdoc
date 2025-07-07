@@ -3,7 +3,7 @@ package ecs
 
 
 import sset "../sparse_set"
-import mem "core:mem"
+import "base:intrinsics"
 import vmem "core:mem/virtual"
 
 
@@ -22,8 +22,9 @@ Component_Data :: struct {
 
 // Query structure, will be used for querying entities for systems, currently it only has required component types
 // TODO: Support withnone and withany
-Query :: struct {
-	world:   ^World,
+Query :: struct($T: typeid) 
+where intrinsics.type_is_subtype_of(T, World) {
+	world:   ^T,
 	withall: []typeid,
 }
 
