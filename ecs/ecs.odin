@@ -169,7 +169,6 @@ Entity :: sset.Sparse_Set_Handle
 // Has the following fields:
 // entities: Just a Sparse_Set_Auto(Entity) for storing entities and getting new ids. Prevents id reuse.
 // components: a map of typeid to Component_Data (storing components of different types and their respective handles.)
-// components_raw: a dynamic array of rawptr (every component data is stored in it making easy to free the memory)
 World :: struct {
 	arena:      vmem.Arena,
 	entities:   sset.Sparse_Set_Auto(Entity),
@@ -184,6 +183,7 @@ World :: struct {
 
 // Destroys the entities sparse set, the components map and it's speciallized sparse sets and the components arena. 
 // Should be called when the world is no longer needed, releases all allocated memory.
+// @param world: pointer to World
 destroy_world :: proc(world: ^World) {
 	for comptype, &compset in world.components {
 		sset.destroy(&compset)
@@ -202,6 +202,7 @@ destroy_world :: proc(world: ^World) {
 
 // Creates an entity, generates a new handle and returns it.
 // world.entities is a Sparse_Set_Auto, it's responsible for generating a new unique hadle for each entity
+// @param world: pointer to World
 create_entity :: proc(world: ^World) -> (Entity, bool) #optional_ok {
 	entity, ok_entity := sset.insert(&world.entities, Entity{})
 	if !ok_entity do return {}, false
@@ -209,7 +210,9 @@ create_entity :: proc(world: ^World) -> (Entity, bool) #optional_ok {
 }
 
 
-// Destroys an entity, first, deletes every component it has, then, deletes the entity handle itself.
+// Destroys an entity. First, deletes every component it has, then, deletes the entity handle itself.
+// @param world: pointer to World
+// @param entity: handle to destroyed entity
 destroy_entity :: proc(world: ^World, entity: Entity) {
 	for comptype, &compset in world.components {
 		if sset.contains(&compset, entity) {
@@ -228,6 +231,9 @@ destroy_entity :: proc(world: ^World, entity: Entity) {
 // Adds a component to given entity.
 // Component type registration is not needed, since it will first check if there's already a sparse set for given component type in compoenents map.
 // If there is not, it will then create said sparse set.
+// @param world: pointer to World
+// @param entity: handle to the entity to add component to
+// @param component: the component to be added to entity (will be copied)
 add_component :: proc(world: ^World, entity: Entity, component: $T) -> bool {
 	init_world(world)
 
@@ -251,6 +257,9 @@ add_component :: proc(world: ^World, entity: Entity, component: $T) -> bool {
 
 // Removes a component from given entity.
 // Returns true if component was removed, false if the component was not registered in the world
+// @param world: pointer to World
+// @param entity: handle to the entity to remove component from
+// @param T: the compoenent type to be removed from entity
 remove_component :: proc(world: ^World, entity: Entity, $T: typeid) -> bool {
 	if T not_in world.components {
 		return false
@@ -278,6 +287,8 @@ get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 
 
 // Used to build a query
+// @param world: pointer to World
+// @param withall: a slice of component types that are required for an entity to be queried
 build_query :: proc(
 	world: ^$T,
 	withall: []typeid,
@@ -289,6 +300,8 @@ build_query :: proc(
 // Query the entities based on given query.
 // It's used for basic systems that don't require parameters.
 // Custom parameters/properties/worlds can be provided by subtyping World
+// @param q: query with component types for the system
+// @param system: procedure to be called for each queried entity
 query_system :: proc(
 	q: Query($T),
 	system: proc(world: ^T, entity: Entity),
