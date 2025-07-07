@@ -312,3 +312,37 @@ query_basic_system :: proc(q: Query, system: proc(world: ^World, entity: Entity)
 		}
 	}
 }
+
+
+// Query the entities based on given query.
+// It's used for processes that don't need to be an ecs system
+query_entities :: proc(q: Query) -> []Entity {
+	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
+	for type in q.withall {
+		set := &q.world.components[type]
+		if smallest_set == nil || set.count < smallest_set.count {
+			smallest_set = set
+		}
+	}
+
+	handles, _ := sset.get_all_handles(smallest_set)
+	defer delete(handles)
+	result := make([dynamic]Entity, 0, len(handles))
+
+	for handle in handles {
+		has_all := true
+
+		for type in q.withall {
+			if !sset.contains(&q.world.components[type], handle) {
+				has_all = false
+				break
+			}
+		}
+
+		if has_all {
+			append(&result, handle)
+		}
+	}
+
+	return result[:]
+}
