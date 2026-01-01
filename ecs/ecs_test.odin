@@ -105,3 +105,19 @@ test_add_and_remove_components :: proc(t: ^testing.T) {
 	query_system(test_query, test_system)
 	testing.expect(t, count == 150, "Component count in 150 entities check failed")
 }
+
+@(test)
+test_query_unregistered_component :: proc(t: ^testing.T) {
+	world := World{}
+	defer destroy_world(&world)
+
+	Test_Component :: struct {}
+
+	test_query := build_query(&world, {Test_Component})
+	test_system :: proc(world: ^World, entity: Entity) {
+
+	}
+
+	query_system(test_query, test_system)
+}
+

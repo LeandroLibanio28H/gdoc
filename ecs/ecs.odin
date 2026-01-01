@@ -181,7 +181,7 @@ World :: struct {
 ###################################################################  */
 
 
-// Destroys the entities sparse set, the components map and it's speciallized sparse sets and the components arena. 
+// Destroys the entities sparse set, the components map and it's speciallized sparse sets and the components arena.
 // Should be called when the world is no longer needed, releases all allocated memory.
 // @param world: pointer to World
 destroy_world :: proc(world: ^World) {
@@ -307,8 +307,10 @@ query_system :: proc(
 	system: proc(world: ^T, entity: Entity),
 ) where intrinsics.type_is_subtype_of(T, World) {
 	smallest_set: ^sset.Sparse_Set_Manual(Component_Data)
+
 	for type in q.withall {
 		set := &q.world.components[type]
+		if set == nil do return
 		if smallest_set == nil || set.count < smallest_set.count {
 			smallest_set = set
 		}
@@ -332,3 +334,4 @@ query_system :: proc(
 		}
 	}
 }
+
