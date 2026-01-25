@@ -30,3 +30,19 @@ update_timer :: proc(timer: ^Timer, scale: f64 = 1.0) -> bool {
 	return false
 }
 
+
+create_timer :: proc(
+	wait_time: f64,
+	one_shoot: bool = false,
+	timeout_callback: proc() -> bool = nil,
+) -> Timer {
+	return Timer {
+		one_shoot = one_shoot,
+		paused = false,
+		timeout_callback = timeout_callback,
+		wait_time = wait_time,
+		_time = 0.0,
+		_last_time = odin_time.now(),
+	}
+}
+
