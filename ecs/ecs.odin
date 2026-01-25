@@ -151,7 +151,7 @@ Example (assumes this package is imported under the alias `ecs` and raylib is im
 package ecs
 
 
-import sset "../sparse_set"
+import sset "../container/sparse_set"
 import "base:intrinsics"
 import vmem "core:mem/virtual"
 
