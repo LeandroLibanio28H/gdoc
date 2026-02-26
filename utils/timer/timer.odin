@@ -99,7 +99,7 @@ add_timer_to_container :: proc(
 		callback  = timeout_callback,
 		user_data = user_data,
 	}
-	timer := create_timer(wait_time, one_shoot, timeout_callback_data)
+	timer := create_timer(wait_time, one_shoot, timer_container, timeout_callback_data)
 	sset_flag, ok_flag := timer_container.timers[flag]
 	if !ok_flag {
 		timer_container.timers[flag] = sset.Sparse_Set_Auto(Timer){}

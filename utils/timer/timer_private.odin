@@ -18,6 +18,7 @@ Timer :: struct {
 	settings:         Timer_Settings,
 	paused:           bool,
 	timeout_callback: Timer_Timeout_Callback_Data,
+	timer_container:  ^Timer_Container,
 	_time:            f64,
 	_last_time:       odin_time.Time,
 }
@@ -68,21 +69,21 @@ update_timer_container_flag :: proc(timer_container: ^Timer_Container, flag: str
 // It uses odin.time to gather the elapsed time since the last update.
 // @param timer: pointer to Timer
 // @param scale: scale factor to apply to the elapsed time
-// TODO: if the timer is one-shot, it should be removed from the container after the timeout.
 update_timer :: proc(timer: ^Timer, scale: f64 = 1.0) -> bool {
 	if timer.paused do return false
 	elapsed: f64 = auto_cast odin_time.since(timer._last_time) / auto_cast odin_time.Second
 	timer._time += elapsed
 	timer._last_time = odin_time.now()
+	result := false
 	if timer._time >= timer.settings.wait_time {
 		timer._time -= timer.settings.wait_time
+		result = timer.timeout_callback.callback(timer.timeout_callback.user_data)
 		if timer.settings.one_shoot {
-			timer._time = 0.0
-			timer.paused = true
+			remove_timer_from_container(timer.timer_container, timer.handle)
+			return result
 		}
-		return timer.timeout_callback.callback(timer.timeout_callback.user_data)
 	}
-	return false
+	return result
 }
 
 
@@ -93,6 +94,7 @@ update_timer :: proc(timer: ^Timer, scale: f64 = 1.0) -> bool {
 create_timer :: proc(
 	wait_time: f64,
 	one_shoot: bool = false,
+	timer_container: ^Timer_Container,
 	timeout_callback: Timer_Timeout_Callback_Data = {},
 ) -> Timer {
 	settings := Timer_Settings {
@@ -103,6 +105,7 @@ create_timer :: proc(
 		settings = settings,
 		paused = false,
 		timeout_callback = timeout_callback,
+		timer_container = timer_container,
 		_time = 0.0,
 		_last_time = odin_time.now(),
 	}

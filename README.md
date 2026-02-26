@@ -9,7 +9,8 @@
 ## ✨ Features
 
 🔸 **Sparse Set** implementation (manual and auto ID allocation)  
-🔸 **Minimalist ECS** (Entity Component System) built on sparse sets
+🔸 **Minimalist ECS** (Entity Component System) built on sparse sets  
+🔸 **Timer** utility for measuring elapsed time and triggering events
 
 ---
 
@@ -33,12 +34,16 @@ git submodule add https://github.com/LeandroLibanio28H/gdoc.git
 
 ## 📦 Modules
 
+### **Containers**
+
 ### `sparse_set`
 
 A blazing-fast sparse set implementation with two modes:
 
 - `Sparse_Set_Auto` – IDs are automatically generated. Use like a performant list.
 - `Sparse_Set_Manual` – IDs are user-defined. Great for syncing between multiple sets.
+
+### **Architecture**
 
 ### `ecs`
 
@@ -48,19 +53,32 @@ A minimal ECS built on top of sparse_set, focused on:
 - Per-component sparse sets
 - Dynamic queries over registered components
 
+
+### **Utilities**
+
+### `timer`
+
+A general purpose timer utility for measuring elapsed time and triggering events.
+
 ---
 
 ## 📁 Directory Structure
 ```bash
 gdoc/
-├── sparse_set/
-│   └── sparse_set.odin
-│   └── sparse_set_private.odin #for private procedures
-│   └── sparse_set_test.odin # unit tests
+├── container/
+│   └── sparse_set/
+│       └── sparse_set.odin
+│       └── sparse_set_private.odin #for private procedures
+│       └── sparse_set_test.odin # unit tests
 ├── ecs/
 │   └── ecs.odin
 │   └── ecs_private.odin #for private procedures
 │   └── ecs_test.odin # unit tests
+├── utils/
+│   └── timer/
+│       └── timer.odin
+│       └── timer_private.odin #for private procedures
+│       └── timer_test.odin # unit tests
 └── README.md
 ```
 
