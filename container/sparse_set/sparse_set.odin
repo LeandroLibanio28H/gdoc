@@ -24,7 +24,7 @@ This implementation provides two types of Sparse Sets:
 		Can be used as a way to have common ids between multiple sparse sets.
 
 
-Example (assumes this package is imported under the alias `sset`):
+Example (assumes this package is imported under the alias `sset` and fmt is imported under the alias `fmt`):
 
 	Entity :: struct {
 		name:       string,
@@ -70,25 +70,51 @@ package sparse_set
 import "base:intrinsics"
 
 
+/*  ###################################################################
+	TYPEDEFS
+###################################################################  */
+
+
+// A handle to an element in the sparse set.
 Sparse_Set_Handle :: struct {
 	id: int,
 }
 
 
+// An invalid handle to an element in the sparse set.
 Empty_Sparse_Set_Handle :: Sparse_Set_Handle {
 	id = -1,
 }
 
 
+// Manually managed sparse set.
 Sparse_Set_Manual :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	using set: Sparse_Set(T),
 }
 
 
+// Automatically managed sparse set.
 Sparse_Set_Auto :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Sparse_Set_Handle) {
 	using set: Sparse_Set(T),
 	next_id:   int,
 }
+
+
+/*  ###################################################################
+	HELPERS
+###################################################################  */
+
+
+// Checks if Sparse_Set is initialized.
+// @param sset: pointer to Sparse_Set
+is_initialized :: proc(sset: $T) -> bool where intrinsics.type_is_subtype_of(T, Sparse_Set) {
+	return sset._is_init
+}
+
+
+/*  ###################################################################
+	PROC GROUPS
+###################################################################  */
 
 
 // Initialises Sparse_Set.
@@ -100,13 +126,6 @@ Sparse_Set_Auto :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Spa
 init :: proc {
 	init_sset_auto,
 	init_sset_manual,
-}
-
-
-// Checks if Sparse_Set is initialized.
-// @param sset: pointer to Sparse_Set
-is_initialized :: proc(sset: $T) -> bool where intrinsics.type_is_subtype_of(T, Sparse_Set) {
-	return sset._is_init
 }
 
 

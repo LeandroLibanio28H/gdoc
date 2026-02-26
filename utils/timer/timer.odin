@@ -1,3 +1,45 @@
+/* General purpose timer implementation - By Leandro "LibanioL" Libanio (https://libaniol.com)
+
+Example (assumes this package is imported under the alias `timer` and fmt is imported under the alias `fmt`):
+
+	timer_container := timer.create_timer_container()
+	defer timer.destroy_timer_container(&timer_container)
+
+	done := false
+	timer.add_timer_to_container(
+		&timer_container,
+		10.0,
+		true,
+		&done,
+		proc(user_data: rawptr) -> bool {
+			data := (^bool)(user_data)
+			data^ = true
+			fmt.println("This timer ends the process!")
+			return true
+		},
+	)
+
+	count: int = 0
+	timer.add_timer_to_container(
+		&timer_container,
+		1.0,
+		false,
+		&count,
+		proc(user_data: rawptr) -> bool {
+			data := (^int)(user_data)
+			data^ += 1
+			ordinal := "th" if data^ > 3 else "st" if data^ == 1 else "nd" if data^ == 2 else "rd"
+			fmt.printfln("Timer fired for the %v%v time!", data^, ordinal)
+			return true
+		},
+	)
+
+	for !done {
+		timer.update_timer_container(&timer_container)
+	}
+
+*/
+
 package timer
 
 
