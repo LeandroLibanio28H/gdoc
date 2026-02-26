@@ -1,5 +1,5 @@
+#+private
 package ecs
-// files ended with "test" are private
 
 
 import "core:testing"
@@ -72,7 +72,6 @@ test_add_components :: proc(t: ^testing.T) {
 
 	testing.expect(t, count == 100, "Compoennt count in 100 entities check failed")
 }
-
 
 @(test)
 test_add_and_remove_components :: proc(t: ^testing.T) {

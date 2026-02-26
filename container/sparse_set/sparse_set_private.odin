@@ -1,9 +1,8 @@
-#+private 
+#+private
 package sparse_set
 
 
 import "base:intrinsics"
-import "core:slice"
 
 
 // Base Sparse Set struct Sparse_Set_Auto and Sparse_Set_Manual are subtypes of Sparse_Set
@@ -537,3 +536,4 @@ _destroy :: proc(sset: ^Sparse_Set($T)) where intrinsics.type_is_subtype_of(T, S
 	sset._is_init = false
 	sset.count = 0
 }
+
