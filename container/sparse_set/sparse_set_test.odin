@@ -1,5 +1,5 @@
+#+private
 package sparse_set
-// files ended with "test" are private
 
 
 import "core:testing"
@@ -93,7 +93,6 @@ test_handles_and_iteration :: proc(t: ^testing.T) {
 	delete(names)
 }
 
-
 @(test)
 test_edge_cases :: proc(t: ^testing.T) {
 	// empty sset test
@@ -162,3 +161,4 @@ test_stress :: proc(t: ^testing.T) {
 	// checks size
 	testing.expect(t, set.count == 100_000, "Size mismatch")
 }
+

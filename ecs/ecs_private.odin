@@ -1,8 +1,8 @@
-#+private 
+#+private
 package ecs
 
 
-import sset "../sparse_set"
+import sset "../container/sparse_set"
 import "base:intrinsics"
 import vmem "core:mem/virtual"
 
@@ -22,8 +22,7 @@ Component_Data :: struct {
 
 // Query structure, will be used for querying entities for systems, currently it only has required component types
 // TODO: Support withnone and withany
-Query :: struct($T: typeid) 
-where intrinsics.type_is_subtype_of(T, World) {
+Query :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, World) {
 	world:   ^T,
 	withall: []typeid,
 }
@@ -48,3 +47,4 @@ init_world :: proc(world: ^World) {
 init_component_storage :: proc(world: ^World, type: typeid) {
 	world.components[type] = sset.Sparse_Set_Manual(Component_Data){}
 }
+
