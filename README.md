@@ -3,7 +3,7 @@
 
 **GDOC** is a modular library for game development in [Odin](https://odin-lang.org/), focused on performance, clarity, and reusability.
 
-> ⚙️ Built by [Leandro Libanio](https://libaniol.com).
+> ⚙️ Built by [Leandro Libanio](https://libaniol.com).  
 > 🖼️ Logo by [Kevin França](https://kevinfranca.carrd.co/).
 ---
 
