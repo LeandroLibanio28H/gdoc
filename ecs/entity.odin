@@ -5,26 +5,25 @@ import log "core:log"
 
 
 Entity :: struct {
-	id:  int,
-	gen: int,
+	id:  u32,
+	gen: u32,
 }
 
 
 entity_alive :: proc(world: ^World, entity: Entity) -> bool {
-	if entity.id < 0 do return false
-	if entity.id >= len(world._generations) do return false
+	if int(entity.id) >= len(world._generations) do return false
 	return world._generations[entity.id] == entity.gen
 }
 
 entity_create :: proc(world: ^World) -> Entity {
-	idx: int
+	idx: u32
 
 	if len(world._free_indices) > 0 {
 		idx = pop(&world._free_indices)
 	} else {
 		idx = world._next_index
 		world._next_index += 1
-		append(&world._generations, 1)
+		append(&world._generations, u32(1))
 	}
 	return Entity{id = idx, gen = world._generations[idx]}
 }
