@@ -29,6 +29,11 @@ entity_create :: proc(world: ^World) -> Entity {
 }
 
 entity_destroy :: proc(world: ^World, entity: Entity) {
+	if world._defer_depth > 0 {
+		command_buffer_destroy_entity(&world._cmd_buffer, entity)
+		return
+	}
+
 	if !entity_alive(world, entity) do return
 
 	for _, pool in world._component_pools {
@@ -46,6 +51,12 @@ entity_add_component :: proc(world: ^World, entity: Entity, component: $T) {
 		log.error("Attempt to add unregistered component", tid)
 		return
 	}
+
+	if world._defer_depth > 0 {
+		command_buffer_add_component(&world._cmd_buffer, entity, component)
+		return
+	}
+
 	if !entity_alive(world, entity) do return
 
 	comp_copy := component
@@ -61,10 +72,17 @@ entity_get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 }
 
 entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
-	if !entity_alive(world, entity) do return
-	if T not_in world._component_pools {
-		log.error("Attempt to remove unregistered component", T)
+	tid := typeid_of(T)
+	if tid not_in world._component_pools {
+		log.error("Attempt to remove unregistered component", tid)
 		return
 	}
-	pool_remove(world._component_pools[T], entity)
+
+	if world._defer_depth > 0 {
+		command_buffer_remove_component(&world._cmd_buffer, entity, T)
+		return
+	}
+
+	if !entity_alive(world, entity) do return
+	pool_remove(world._component_pools[tid], entity)
 }
