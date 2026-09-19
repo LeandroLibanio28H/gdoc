@@ -33,15 +33,7 @@ entity_destroy :: proc(world: ^World, entity: Entity) {
 		command_buffer_destroy_entity(&world._cmd_buffer, entity)
 		return
 	}
-
-	if !entity_alive(world, entity) do return
-
-	for _, pool in world._component_pools {
-		pool_remove(pool, entity)
-	}
-
-	world._generations[entity.id] += 1
-	append(&world._free_indices, entity.id)
+	entity_destroy_immediate(world, entity)
 }
 
 entity_add_component :: proc(world: ^World, entity: Entity, component: $T) {
@@ -57,10 +49,8 @@ entity_add_component :: proc(world: ^World, entity: Entity, component: $T) {
 		return
 	}
 
-	if !entity_alive(world, entity) do return
-
 	comp_copy := component
-	pool_add(world._component_pools[tid], entity, &comp_copy)
+	entity_add_component_immediate(world, entity, tid, &comp_copy)
 }
 
 entity_get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
@@ -83,6 +73,5 @@ entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
 		return
 	}
 
-	if !entity_alive(world, entity) do return
-	pool_remove(world._component_pools[tid], entity)
+	entity_remove_component_immediate(world, entity, tid)
 }

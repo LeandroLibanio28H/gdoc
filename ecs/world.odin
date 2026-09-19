@@ -57,11 +57,42 @@ world_is_deferred :: proc(world: ^World) -> bool {
 	return world._defer_depth > 0
 }
 
-world_register_component :: proc(world: ^World, $T: typeid) {
+world_register_component :: proc(world: ^World, $T: typeid, initial_capacity: int = -1) {
 	if T in world._component_pools {
 		return
 	}
 
-	pool := pool_init(T, world._initial_capacity, world.allocator)
+	cap := initial_capacity >= 0 ? initial_capacity : world._initial_capacity
+	pool := pool_init(T, cap, world.allocator)
 	world._component_pools[T] = pool
+}
+
+world_entity_count :: proc(world: ^World) -> int {
+	return int(world._next_index) - len(world._free_indices)
+}
+
+world_get_all_alive_entities :: proc(
+	world: ^World,
+	allocator := context.temp_allocator,
+) -> []Entity {
+	count := world_entity_count(world)
+	if count == 0 do return nil
+
+	free_map := make([]bool, world._next_index, context.temp_allocator)
+	for free_id in world._free_indices {
+		free_map[free_id] = true
+	}
+
+	entities := make([]Entity, count, allocator)
+	idx := 0
+	for id in 0 ..< world._next_index {
+		if !free_map[id] {
+			entities[idx] = Entity {
+				id  = id,
+				gen = world._generations[id],
+			}
+			idx += 1
+		}
+	}
+	return entities[:idx]
 }

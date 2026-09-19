@@ -6,8 +6,12 @@ Event_Stream :: struct($T: typeid) {
 }
 
 
-event_stream_init :: proc(stream: ^Event_Stream($T), capacity: int = 128) {
-	stream.events = make([dynamic]T, 0, capacity)
+event_stream_init :: proc(
+	stream: ^Event_Stream($T),
+	capacity: int = 128,
+	allocator := context.allocator,
+) {
+	stream.events = make([dynamic]T, 0, capacity, allocator)
 }
 
 event_stream_destroy :: proc(stream: ^Event_Stream($T)) {

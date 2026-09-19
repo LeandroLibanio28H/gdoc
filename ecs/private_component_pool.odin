@@ -1,6 +1,7 @@
 #+private
 package ecs
 
+import log "core:log"
 import mem "core:mem"
 
 
@@ -40,9 +41,16 @@ pool_init :: proc(
 	if pool.element_size > 0 && initial_capacity > 0 {
 		bytes_to_alloc := pool.capacity * pool.element_size
 		raw_mem, err := mem.alloc(bytes_to_alloc, pool.element_align, allocator)
-		if err == .None {
-			pool.component_data = cast([^]byte)raw_mem
+		if err != .None {
+			log.errorf(
+				"CRITICAL ERROR: Out of memory to initialize component pool for '%v'. Requested: %d bytes. Error: %v",
+				typeid_of(T),
+				bytes_to_alloc,
+				err,
+			)
+			panic("Out of memory")
 		}
+		pool.component_data = cast([^]byte)raw_mem
 	}
 
 	return pool
@@ -86,7 +94,13 @@ pool_has :: proc(pool: ^Component_Pool, entity: Entity) -> bool {
 }
 
 pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
-	if pool_has(pool, entity) do return
+	if dense_idx, exists := pool_get_index(pool, entity); exists {
+		if pool.element_size > 0 && data != nil {
+			dest_ptr := &pool.component_data[dense_idx * pool.element_size]
+			mem.copy(dest_ptr, data, pool.element_size)
+		}
+		return
+	}
 
 	page_idx := entity.id >> PAGE_SHIFT
 	offset := entity.id & PAGE_MASK
@@ -97,6 +111,13 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 
 	if pool.sparse_pages[page_idx] == nil {
 		new_page: Page = new([PAGE_SIZE]u32, pool.allocator)
+		if new_page == nil {
+			log.errorf(
+				"CRITICAL ERROR: Out of memory to allocate sparse page for entity ID %d in component pool.",
+				entity.id,
+			)
+			panic("Out of memory")
+		}
 		for i in 0 ..< PAGE_SIZE {
 			new_page[i] = INVALID_INDEX
 		}
@@ -117,14 +138,21 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 
 			new_bytes := new_cap * pool.element_size
 			new_mem, err := mem.alloc(new_bytes, pool.element_align, pool.allocator)
-			if err == .None {
-				if pool.component_data != nil && dense_idx > 0 {
-					mem.copy(new_mem, pool.component_data, dense_idx * pool.element_size)
-					mem.free(pool.component_data, pool.allocator)
-				}
-				pool.component_data = cast([^]byte)new_mem
-				pool.capacity = new_cap
+			if err != .None {
+				log.errorf(
+					"CRITICAL ERROR: Out of memory to expand component pool to capacity %d (%d bytes). Error: %v",
+					new_cap,
+					new_bytes,
+					err,
+				)
+				panic("Out of memory")
 			}
+			if pool.component_data != nil && dense_idx > 0 {
+				mem.copy(new_mem, pool.component_data, dense_idx * pool.element_size)
+				mem.free(pool.component_data, pool.allocator)
+			}
+			pool.component_data = cast([^]byte)new_mem
+			pool.capacity = new_cap
 		}
 
 		dest_ptr := &pool.component_data[dense_idx * pool.element_size]

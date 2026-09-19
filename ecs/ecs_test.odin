@@ -252,3 +252,70 @@ test_world_deferred_context :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, len(track.bad_free_array), 0)
 }
+
+
+// ---------------------------------------------------------
+// 4. ARCHITECTURAL ENHANCEMENTS AND NEW FEATURES TESTS
+// ---------------------------------------------------------
+
+@(test)
+test_ecs_architectural_enhancements :: proc(t: ^testing.T) {
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	allocator := mem.tracking_allocator(&track)
+
+	world: World
+	world_init(&world, 10, allocator)
+	defer world_destroy(&world)
+
+	// A. Customizable Initial Capacity
+	// Register a rare component with capacity 1
+	world_register_component(&world, Pos_Comp, 1)
+	pool := world._component_pools[Pos_Comp]
+	testing.expect_value(t, pool.capacity, 1)
+
+	// B. Component Overwrite
+	e := entity_create(&world)
+	entity_add_component(&world, e, Pos_Comp{x = 10, y = 20})
+
+	// Add again - should overwrite instead of no-op
+	entity_add_component(&world, e, Pos_Comp{x = 50, y = 60})
+	pos := entity_get_component(&world, e, Pos_Comp)
+	testing.expect(t, pos != nil)
+	testing.expect_value(t, pos.x, f32(50))
+	testing.expect_value(t, pos.y, f32(60))
+
+	// C. world_entity_count & world_get_all_alive_entities
+	testing.expect_value(t, world_entity_count(&world), 1)
+
+	e2 := entity_create(&world)
+	e3 := entity_create(&world)
+	testing.expect_value(t, world_entity_count(&world), 3)
+
+	entity_destroy(&world, e2)
+	testing.expect_value(t, world_entity_count(&world), 2)
+
+	alive := world_get_all_alive_entities(&world, context.temp_allocator)
+	testing.expect_value(t, len(alive), 2)
+	testing.expect(
+		t,
+		(alive[0] == e && alive[1] == e3) || (alive[0] == e3 && alive[1] == e),
+		"Active entities should be e and e3",
+	)
+
+	// D. Event_Stream Custom Allocator
+	stream: Event_Stream(int)
+	event_stream_init(&stream, 10, allocator)
+	defer event_stream_destroy(&stream)
+
+	event_stream_push(&stream, 42)
+	event_stream_push(&stream, 99)
+
+	events := event_stream_events(&stream)
+	testing.expect_value(t, len(events), 2)
+	testing.expect_value(t, events[0], 42)
+	testing.expect_value(t, events[1], 99)
+
+	testing.expect_value(t, len(track.bad_free_array), 0)
+}
