@@ -16,6 +16,7 @@ Page :: ^[PAGE_SIZE]u32
 
 
 Component_Pool :: struct {
+	data_size:      int,
 	element_size:   int,
 	element_align:  int,
 	capacity:       int,
@@ -32,8 +33,9 @@ pool_init :: proc(
 ) -> ^Component_Pool {
 	pool := new(Component_Pool, allocator)
 	pool.allocator = allocator
-	pool.element_size = mem.align_forward_int(size_of(T), align_of(T))
+	pool.data_size = size_of(T)
 	pool.element_align = max(align_of(T), 1)
+	pool.element_size = mem.align_forward_int(pool.data_size, pool.element_align)
 	pool.capacity = initial_capacity
 	pool.sparse_pages = make([dynamic]Page, allocator)
 	pool.dense = make([dynamic]Entity, 0, initial_capacity, allocator)
@@ -95,9 +97,15 @@ pool_has :: proc(pool: ^Component_Pool, entity: Entity) -> bool {
 
 pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 	if dense_idx, exists := pool_get_index(pool, entity); exists {
-		if pool.element_size > 0 && data != nil {
-			dest_ptr := &pool.component_data[dense_idx * pool.element_size]
-			mem.copy(dest_ptr, data, pool.element_size)
+		if pool.data_size > 0 && data != nil {
+			dest_offset := dense_idx * pool.element_size
+			mem.copy(&pool.component_data[dest_offset], data, pool.data_size)
+			if pool.element_size > pool.data_size {
+				mem.zero(
+					&pool.component_data[dest_offset + pool.data_size],
+					pool.element_size - pool.data_size,
+				)
+			}
 		}
 		return
 	}
@@ -155,8 +163,16 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 			pool.capacity = new_cap
 		}
 
-		dest_ptr := &pool.component_data[dense_idx * pool.element_size]
-		mem.copy(dest_ptr, data, pool.element_size)
+		dest_offset := dense_idx * pool.element_size
+		if pool.data_size > 0 && data != nil {
+			mem.copy(&pool.component_data[dest_offset], data, pool.data_size)
+			if pool.element_size > pool.data_size {
+				mem.zero(
+					&pool.component_data[dest_offset + pool.data_size],
+					pool.element_size - pool.data_size,
+				)
+			}
+		}
 	}
 }
 

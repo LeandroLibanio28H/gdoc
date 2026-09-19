@@ -1,6 +1,38 @@
 #+private
 package ecs
 
+find_lead_pool :: proc(pools: []^Component_Pool) -> ^Component_Pool {
+	if len(pools) == 0 do return nil
+	lead := pools[0]
+	if lead == nil do return nil
+	for p in pools[1:] {
+		if p == nil do return nil
+		if len(p.dense) < len(lead.dense) {
+			lead = p
+		}
+	}
+	return lead
+}
+
+pool_resolve_index :: #force_inline proc(
+	pool: ^Component_Pool,
+	entity: Entity,
+	lead_idx: int,
+	is_lead: bool,
+) -> (
+	int,
+	bool,
+) {
+	if is_lead do return lead_idx, true
+	return pool_get_index(pool, entity)
+}
+
+pool_component_ptr :: #force_inline proc(pool: ^Component_Pool, dense_idx: int, $T: typeid) -> ^T {
+	if pool.element_size == 0 do return cast(^T)rawptr(pool)
+	return cast(^T)&pool.component_data[dense_idx * pool.element_size]
+}
+
+
 // ---------------------------------------------------------
 // VIEW 1
 // ---------------------------------------------------------
@@ -22,9 +54,7 @@ view1_next :: proc(view: ^View1($A)) -> (entity: Entity, a: ^A, ok: bool) {
 		view.index += 1
 
 		entity = view.pool_a.dense[curr_index]
-		a =
-			view.pool_a.element_size > 0 ? cast(^A)&view.pool_a.component_data[curr_index * view.pool_a.element_size] : nil
-
+		a = pool_component_ptr(view.pool_a, curr_index, A)
 		return entity, a, true
 	}
 	return {}, nil, false
@@ -38,40 +68,17 @@ view1_next :: proc(view: ^View1($A)) -> (entity: Entity, a: ^A, ok: bool) {
 View2 :: struct($A: typeid, $B: typeid) {
 	pool_a, pool_b: ^Component_Pool,
 	lead_pool:      ^Component_Pool,
-	test_pool_1:    ^Component_Pool,
-	lead_role:      int,
-	test1_role:     int,
 	index:          int,
 }
 
 view2_create :: proc(world: ^World, $A: typeid, $B: typeid) -> View2(A, B) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-
-	view := View2(A, B) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		index  = 0,
-	}
-
-	if pool_a == nil || pool_b == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-
-	if len_a <= len_b {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-	} else {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-	}
-
-	return view
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	return View2(A, B){pool_a = pa, pool_b = pb, lead_pool = find_lead_pool({pa, pb}), index = 0}
 }
 
 view2_next :: proc(view: ^View2($A, $B)) -> (entity: Entity, a: ^A, b: ^B, ok: bool) {
-	if view.lead_pool == nil || view.test_pool_1 == nil do return {}, nil, nil, false
+	if view.lead_pool == nil do return {}, nil, nil, false
 
 	for view.index < len(view.lead_pool.dense) {
 		curr_idx := view.index
@@ -79,19 +86,24 @@ view2_next :: proc(view: ^View2($A, $B)) -> (entity: Entity, a: ^A, b: ^B, ok: b
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-
-		ptrs: [2]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-
-		return entity, cast(^A)ptrs[0], cast(^B)ptrs[1], true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		return entity, a, b, true
 	}
 	return {}, nil, nil, false
 }
@@ -104,47 +116,20 @@ view2_next :: proc(view: ^View2($A, $B)) -> (entity: Entity, a: ^A, b: ^B, ok: b
 View3 :: struct($A: typeid, $B: typeid, $C: typeid) {
 	pool_a, pool_b, pool_c: ^Component_Pool,
 	lead_pool:              ^Component_Pool,
-	test_pool_1:            ^Component_Pool,
-	test_pool_2:            ^Component_Pool,
-	lead_role:              int,
-	test1_role:             int,
-	test2_role:             int,
 	index:                  int,
 }
 
 view3_create :: proc(world: ^World, $A: typeid, $B: typeid, $C: typeid) -> View3(A, B, C) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-
-	view := View3(A, B, C) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	return View3(A, B, C) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		lead_pool = find_lead_pool({pa, pb, pc}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-
-	if len_a <= len_b && len_a <= len_c {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-	} else if len_b <= len_a && len_b <= len_c {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-	} else {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-	}
-
-	return view
 }
 
 view3_next :: proc(view: ^View3($A, $B, $C)) -> (entity: Entity, a: ^A, b: ^B, c: ^C, ok: bool) {
@@ -156,24 +141,32 @@ view3_next :: proc(view: ^View3($A, $B, $C)) -> (entity: Entity, a: ^A, b: ^B, c
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-
-		ptrs: [3]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-
-		return entity, cast(^A)ptrs[0], cast(^B)ptrs[1], cast(^C)ptrs[2], true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		return entity, a, b, c, true
 	}
 	return {}, nil, nil, nil, false
 }
@@ -186,13 +179,6 @@ view3_next :: proc(view: ^View3($A, $B, $C)) -> (entity: Entity, a: ^A, b: ^B, c
 View4 :: struct($A: typeid, $B: typeid, $C: typeid, $D: typeid) {
 	pool_a, pool_b, pool_c, pool_d: ^Component_Pool,
 	lead_pool:                      ^Component_Pool,
-	test_pool_1:                    ^Component_Pool,
-	test_pool_2:                    ^Component_Pool,
-	test_pool_3:                    ^Component_Pool,
-	lead_role:                      int,
-	test1_role:                     int,
-	test2_role:                     int,
-	test3_role:                     int,
 	index:                          int,
 }
 
@@ -203,49 +189,18 @@ view4_create :: proc(
 	$C: typeid,
 	$D: typeid,
 ) -> View4(A, B, C, D) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-	pool_d := world._component_pools[D]
-
-	view := View4(A, B, C, D) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		pool_d = pool_d,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	pd := world._component_pools[D]
+	return View4(A, B, C, D) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		pool_d = pd,
+		lead_pool = find_lead_pool({pa, pb, pc, pd}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil || pool_d == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-	len_d := len(pool_d.dense)
-
-	if len_a <= len_b && len_a <= len_c && len_a <= len_d {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-	} else if len_b <= len_a && len_b <= len_c && len_b <= len_d {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-	} else if len_c <= len_a && len_c <= len_b && len_c <= len_d {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_d; view.test3_role = 3
-	} else {
-		view.lead_pool = pool_d; view.lead_role = 3
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-	}
-
-	return view
 }
 
 view4_next :: proc(
@@ -266,29 +221,40 @@ view4_next :: proc(
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
-		idx3, ok3 := pool_get_index(view.test_pool_3, entity)
-		if !ok3 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
+		idx_d, ok_d := pool_resolve_index(
+			view.pool_d,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_d,
+		)
+		if !ok_d do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-		test3_ptr :=
-			view.test_pool_3.element_size > 0 ? &view.test_pool_3.component_data[idx3 * view.test_pool_3.element_size] : nil
-
-		ptrs: [4]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-		ptrs[view.test3_role] = test3_ptr
-
-		return entity, cast(^A)ptrs[0], cast(^B)ptrs[1], cast(^C)ptrs[2], cast(^D)ptrs[3], true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		d = pool_component_ptr(view.pool_d, idx_d, D)
+		return entity, a, b, c, d, true
 	}
 	return {}, nil, nil, nil, nil, false
 }
@@ -301,15 +267,6 @@ view4_next :: proc(
 View5 :: struct($A: typeid, $B: typeid, $C: typeid, $D: typeid, $E: typeid) {
 	pool_a, pool_b, pool_c, pool_d, pool_e: ^Component_Pool,
 	lead_pool:                              ^Component_Pool,
-	test_pool_1:                            ^Component_Pool,
-	test_pool_2:                            ^Component_Pool,
-	test_pool_3:                            ^Component_Pool,
-	test_pool_4:                            ^Component_Pool,
-	lead_role:                              int,
-	test1_role:                             int,
-	test2_role:                             int,
-	test3_role:                             int,
-	test4_role:                             int,
 	index:                                  int,
 }
 
@@ -321,62 +278,20 @@ view5_create :: proc(
 	$D: typeid,
 	$E: typeid,
 ) -> View5(A, B, C, D, E) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-	pool_d := world._component_pools[D]
-	pool_e := world._component_pools[E]
-
-	view := View5(A, B, C, D, E) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		pool_d = pool_d,
-		pool_e = pool_e,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	pd := world._component_pools[D]
+	pe := world._component_pools[E]
+	return View5(A, B, C, D, E) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		pool_d = pd,
+		pool_e = pe,
+		lead_pool = find_lead_pool({pa, pb, pc, pd, pe}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil || pool_d == nil || pool_e == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-	len_d := len(pool_d.dense)
-	len_e := len(pool_e.dense)
-
-	if len_a <= len_b && len_a <= len_c && len_a <= len_d && len_a <= len_e {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-	} else if len_b <= len_a && len_b <= len_c && len_b <= len_d && len_b <= len_e {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-	} else if len_c <= len_a && len_c <= len_b && len_c <= len_d && len_c <= len_e {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-	} else if len_d <= len_a && len_d <= len_b && len_d <= len_c && len_d <= len_e {
-		view.lead_pool = pool_d; view.lead_role = 3
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_e; view.test4_role = 4
-	} else {
-		view.lead_pool = pool_e; view.lead_role = 4
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-	}
-
-	return view
 }
 
 view5_next :: proc(
@@ -398,40 +313,48 @@ view5_next :: proc(
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
-		idx3, ok3 := pool_get_index(view.test_pool_3, entity)
-		if !ok3 do continue
-		idx4, ok4 := pool_get_index(view.test_pool_4, entity)
-		if !ok4 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
+		idx_d, ok_d := pool_resolve_index(
+			view.pool_d,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_d,
+		)
+		if !ok_d do continue
+		idx_e, ok_e := pool_resolve_index(
+			view.pool_e,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_e,
+		)
+		if !ok_e do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-		test3_ptr :=
-			view.test_pool_3.element_size > 0 ? &view.test_pool_3.component_data[idx3 * view.test_pool_3.element_size] : nil
-		test4_ptr :=
-			view.test_pool_4.element_size > 0 ? &view.test_pool_4.component_data[idx4 * view.test_pool_4.element_size] : nil
-
-		ptrs: [5]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-		ptrs[view.test3_role] = test3_ptr
-		ptrs[view.test4_role] = test4_ptr
-
-		return entity,
-			cast(^A)ptrs[0],
-			cast(^B)ptrs[1],
-			cast(^C)ptrs[2],
-			cast(^D)ptrs[3],
-			cast(^E)ptrs[4],
-			true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		d = pool_component_ptr(view.pool_d, idx_d, D)
+		e = pool_component_ptr(view.pool_e, idx_e, E)
+		return entity, a, b, c, d, e, true
 	}
 	return {}, nil, nil, nil, nil, nil, false
 }
@@ -444,17 +367,6 @@ view5_next :: proc(
 View6 :: struct($A: typeid, $B: typeid, $C: typeid, $D: typeid, $E: typeid, $F: typeid) {
 	pool_a, pool_b, pool_c, pool_d, pool_e, pool_f: ^Component_Pool,
 	lead_pool:                                      ^Component_Pool,
-	test_pool_1:                                    ^Component_Pool,
-	test_pool_2:                                    ^Component_Pool,
-	test_pool_3:                                    ^Component_Pool,
-	test_pool_4:                                    ^Component_Pool,
-	test_pool_5:                                    ^Component_Pool,
-	lead_role:                                      int,
-	test1_role:                                     int,
-	test2_role:                                     int,
-	test3_role:                                     int,
-	test4_role:                                     int,
-	test5_role:                                     int,
 	index:                                          int,
 }
 
@@ -467,93 +379,22 @@ view6_create :: proc(
 	$E: typeid,
 	$F: typeid,
 ) -> View6(A, B, C, D, E, F) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-	pool_d := world._component_pools[D]
-	pool_e := world._component_pools[E]
-	pool_f := world._component_pools[F]
-
-	view := View6(A, B, C, D, E, F) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		pool_d = pool_d,
-		pool_e = pool_e,
-		pool_f = pool_f,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	pd := world._component_pools[D]
+	pe := world._component_pools[E]
+	pf := world._component_pools[F]
+	return View6(A, B, C, D, E, F) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		pool_d = pd,
+		pool_e = pe,
+		pool_f = pf,
+		lead_pool = find_lead_pool({pa, pb, pc, pd, pe, pf}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil || pool_d == nil || pool_e == nil || pool_f == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-	len_d := len(pool_d.dense)
-	len_e := len(pool_e.dense)
-	len_f := len(pool_f.dense)
-
-	if len_a <= len_b && len_a <= len_c && len_a <= len_d && len_a <= len_e && len_a <= len_f {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-	} else if len_b <= len_a &&
-	   len_b <= len_c &&
-	   len_b <= len_d &&
-	   len_b <= len_e &&
-	   len_b <= len_f {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-	} else if len_c <= len_a &&
-	   len_c <= len_b &&
-	   len_c <= len_d &&
-	   len_c <= len_e &&
-	   len_c <= len_f {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-	} else if len_d <= len_a &&
-	   len_d <= len_b &&
-	   len_d <= len_c &&
-	   len_d <= len_e &&
-	   len_d <= len_f {
-		view.lead_pool = pool_d; view.lead_role = 3
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-	} else if len_e <= len_a &&
-	   len_e <= len_b &&
-	   len_e <= len_c &&
-	   len_e <= len_d &&
-	   len_e <= len_f {
-		view.lead_pool = pool_e; view.lead_role = 4
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_f; view.test5_role = 5
-	} else {
-		view.lead_pool = pool_f; view.lead_role = 5
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-	}
-
-	return view
 }
 
 view6_next :: proc(
@@ -576,46 +417,56 @@ view6_next :: proc(
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
-		idx3, ok3 := pool_get_index(view.test_pool_3, entity)
-		if !ok3 do continue
-		idx4, ok4 := pool_get_index(view.test_pool_4, entity)
-		if !ok4 do continue
-		idx5, ok5 := pool_get_index(view.test_pool_5, entity)
-		if !ok5 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
+		idx_d, ok_d := pool_resolve_index(
+			view.pool_d,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_d,
+		)
+		if !ok_d do continue
+		idx_e, ok_e := pool_resolve_index(
+			view.pool_e,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_e,
+		)
+		if !ok_e do continue
+		idx_f, ok_f := pool_resolve_index(
+			view.pool_f,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_f,
+		)
+		if !ok_f do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-		test3_ptr :=
-			view.test_pool_3.element_size > 0 ? &view.test_pool_3.component_data[idx3 * view.test_pool_3.element_size] : nil
-		test4_ptr :=
-			view.test_pool_4.element_size > 0 ? &view.test_pool_4.component_data[idx4 * view.test_pool_4.element_size] : nil
-		test5_ptr :=
-			view.test_pool_5.element_size > 0 ? &view.test_pool_5.component_data[idx5 * view.test_pool_5.element_size] : nil
-
-		ptrs: [6]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-		ptrs[view.test3_role] = test3_ptr
-		ptrs[view.test4_role] = test4_ptr
-		ptrs[view.test5_role] = test5_ptr
-
-		return entity,
-			cast(^A)ptrs[0],
-			cast(^B)ptrs[1],
-			cast(^C)ptrs[2],
-			cast(^D)ptrs[3],
-			cast(^E)ptrs[4],
-			cast(^F)ptrs[5],
-			true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		d = pool_component_ptr(view.pool_d, idx_d, D)
+		e = pool_component_ptr(view.pool_e, idx_e, E)
+		f = pool_component_ptr(view.pool_f, idx_f, F)
+		return entity, a, b, c, d, e, f, true
 	}
 	return {}, nil, nil, nil, nil, nil, nil, false
 }
@@ -636,19 +487,6 @@ View7 :: struct(
 ) {
 	pool_a, pool_b, pool_c, pool_d, pool_e, pool_f, pool_g: ^Component_Pool,
 	lead_pool:                                              ^Component_Pool,
-	test_pool_1:                                            ^Component_Pool,
-	test_pool_2:                                            ^Component_Pool,
-	test_pool_3:                                            ^Component_Pool,
-	test_pool_4:                                            ^Component_Pool,
-	test_pool_5:                                            ^Component_Pool,
-	test_pool_6:                                            ^Component_Pool,
-	lead_role:                                              int,
-	test1_role:                                             int,
-	test2_role:                                             int,
-	test3_role:                                             int,
-	test4_role:                                             int,
-	test5_role:                                             int,
-	test6_role:                                             int,
 	index:                                                  int,
 }
 
@@ -662,124 +500,24 @@ view7_create :: proc(
 	$F: typeid,
 	$G: typeid,
 ) -> View7(A, B, C, D, E, F, G) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-	pool_d := world._component_pools[D]
-	pool_e := world._component_pools[E]
-	pool_f := world._component_pools[F]
-	pool_g := world._component_pools[G]
-
-	view := View7(A, B, C, D, E, F, G) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		pool_d = pool_d,
-		pool_e = pool_e,
-		pool_f = pool_f,
-		pool_g = pool_g,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	pd := world._component_pools[D]
+	pe := world._component_pools[E]
+	pf := world._component_pools[F]
+	pg := world._component_pools[G]
+	return View7(A, B, C, D, E, F, G) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		pool_d = pd,
+		pool_e = pe,
+		pool_f = pf,
+		pool_g = pg,
+		lead_pool = find_lead_pool({pa, pb, pc, pd, pe, pf, pg}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil || pool_d == nil || pool_e == nil || pool_f == nil || pool_g == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-	len_d := len(pool_d.dense)
-	len_e := len(pool_e.dense)
-	len_f := len(pool_f.dense)
-	len_g := len(pool_g.dense)
-
-	if len_a <= len_b &&
-	   len_a <= len_c &&
-	   len_a <= len_d &&
-	   len_a <= len_e &&
-	   len_a <= len_f &&
-	   len_a <= len_g {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else if len_b <= len_a &&
-	   len_b <= len_c &&
-	   len_b <= len_d &&
-	   len_b <= len_e &&
-	   len_b <= len_f &&
-	   len_b <= len_g {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else if len_c <= len_a &&
-	   len_c <= len_b &&
-	   len_c <= len_d &&
-	   len_c <= len_e &&
-	   len_c <= len_f &&
-	   len_c <= len_g {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else if len_d <= len_a &&
-	   len_d <= len_b &&
-	   len_d <= len_c &&
-	   len_d <= len_e &&
-	   len_d <= len_f &&
-	   len_d <= len_g {
-		view.lead_pool = pool_d; view.lead_role = 3
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else if len_e <= len_a &&
-	   len_e <= len_b &&
-	   len_e <= len_c &&
-	   len_e <= len_d &&
-	   len_e <= len_f &&
-	   len_e <= len_g {
-		view.lead_pool = pool_e; view.lead_role = 4
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else if len_f <= len_a &&
-	   len_f <= len_b &&
-	   len_f <= len_c &&
-	   len_f <= len_d &&
-	   len_f <= len_e &&
-	   len_f <= len_g {
-		view.lead_pool = pool_f; view.lead_role = 5
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-		view.test_pool_6 = pool_g; view.test6_role = 6
-	} else {
-		view.lead_pool = pool_g; view.lead_role = 6
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-		view.test_pool_6 = pool_f; view.test6_role = 5
-	}
-
-	return view
 }
 
 view7_next :: proc(
@@ -803,52 +541,64 @@ view7_next :: proc(
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
-		idx3, ok3 := pool_get_index(view.test_pool_3, entity)
-		if !ok3 do continue
-		idx4, ok4 := pool_get_index(view.test_pool_4, entity)
-		if !ok4 do continue
-		idx5, ok5 := pool_get_index(view.test_pool_5, entity)
-		if !ok5 do continue
-		idx6, ok6 := pool_get_index(view.test_pool_6, entity)
-		if !ok6 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
+		idx_d, ok_d := pool_resolve_index(
+			view.pool_d,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_d,
+		)
+		if !ok_d do continue
+		idx_e, ok_e := pool_resolve_index(
+			view.pool_e,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_e,
+		)
+		if !ok_e do continue
+		idx_f, ok_f := pool_resolve_index(
+			view.pool_f,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_f,
+		)
+		if !ok_f do continue
+		idx_g, ok_g := pool_resolve_index(
+			view.pool_g,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_g,
+		)
+		if !ok_g do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-		test3_ptr :=
-			view.test_pool_3.element_size > 0 ? &view.test_pool_3.component_data[idx3 * view.test_pool_3.element_size] : nil
-		test4_ptr :=
-			view.test_pool_4.element_size > 0 ? &view.test_pool_4.component_data[idx4 * view.test_pool_4.element_size] : nil
-		test5_ptr :=
-			view.test_pool_5.element_size > 0 ? &view.test_pool_5.component_data[idx5 * view.test_pool_5.element_size] : nil
-		test6_ptr :=
-			view.test_pool_6.element_size > 0 ? &view.test_pool_6.component_data[idx6 * view.test_pool_6.element_size] : nil
-
-		ptrs: [7]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-		ptrs[view.test3_role] = test3_ptr
-		ptrs[view.test4_role] = test4_ptr
-		ptrs[view.test5_role] = test5_ptr
-		ptrs[view.test6_role] = test6_ptr
-
-		return entity,
-			cast(^A)ptrs[0],
-			cast(^B)ptrs[1],
-			cast(^C)ptrs[2],
-			cast(^D)ptrs[3],
-			cast(^E)ptrs[4],
-			cast(^F)ptrs[5],
-			cast(^G)ptrs[6],
-			true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		d = pool_component_ptr(view.pool_d, idx_d, D)
+		e = pool_component_ptr(view.pool_e, idx_e, E)
+		f = pool_component_ptr(view.pool_f, idx_f, F)
+		g = pool_component_ptr(view.pool_g, idx_g, G)
+		return entity, a, b, c, d, e, f, g, true
 	}
 	return {}, nil, nil, nil, nil, nil, nil, nil, false
 }
@@ -870,21 +620,6 @@ View8 :: struct(
 ) {
 	pool_a, pool_b, pool_c, pool_d, pool_e, pool_f, pool_g, pool_h: ^Component_Pool,
 	lead_pool:                                                      ^Component_Pool,
-	test_pool_1:                                                    ^Component_Pool,
-	test_pool_2:                                                    ^Component_Pool,
-	test_pool_3:                                                    ^Component_Pool,
-	test_pool_4:                                                    ^Component_Pool,
-	test_pool_5:                                                    ^Component_Pool,
-	test_pool_6:                                                    ^Component_Pool,
-	test_pool_7:                                                    ^Component_Pool,
-	lead_role:                                                      int,
-	test1_role:                                                     int,
-	test2_role:                                                     int,
-	test3_role:                                                     int,
-	test4_role:                                                     int,
-	test5_role:                                                     int,
-	test6_role:                                                     int,
-	test7_role:                                                     int,
 	index:                                                          int,
 }
 
@@ -899,158 +634,26 @@ view8_create :: proc(
 	$G: typeid,
 	$H: typeid,
 ) -> View8(A, B, C, D, E, F, G, H) {
-	pool_a := world._component_pools[A]
-	pool_b := world._component_pools[B]
-	pool_c := world._component_pools[C]
-	pool_d := world._component_pools[D]
-	pool_e := world._component_pools[E]
-	pool_f := world._component_pools[F]
-	pool_g := world._component_pools[G]
-	pool_h := world._component_pools[H]
-
-	view := View8(A, B, C, D, E, F, G, H) {
-		pool_a = pool_a,
-		pool_b = pool_b,
-		pool_c = pool_c,
-		pool_d = pool_d,
-		pool_e = pool_e,
-		pool_f = pool_f,
-		pool_g = pool_g,
-		pool_h = pool_h,
-		index  = 0,
+	pa := world._component_pools[A]
+	pb := world._component_pools[B]
+	pc := world._component_pools[C]
+	pd := world._component_pools[D]
+	pe := world._component_pools[E]
+	pf := world._component_pools[F]
+	pg := world._component_pools[G]
+	ph := world._component_pools[H]
+	return View8(A, B, C, D, E, F, G, H) {
+		pool_a = pa,
+		pool_b = pb,
+		pool_c = pc,
+		pool_d = pd,
+		pool_e = pe,
+		pool_f = pf,
+		pool_g = pg,
+		pool_h = ph,
+		lead_pool = find_lead_pool({pa, pb, pc, pd, pe, pf, pg, ph}),
+		index = 0,
 	}
-
-	if pool_a == nil || pool_b == nil || pool_c == nil || pool_d == nil || pool_e == nil || pool_f == nil || pool_g == nil || pool_h == nil do return view
-
-	len_a := len(pool_a.dense)
-	len_b := len(pool_b.dense)
-	len_c := len(pool_c.dense)
-	len_d := len(pool_d.dense)
-	len_e := len(pool_e.dense)
-	len_f := len(pool_f.dense)
-	len_g := len(pool_g.dense)
-	len_h := len(pool_h.dense)
-
-	if len_a <= len_b &&
-	   len_a <= len_c &&
-	   len_a <= len_d &&
-	   len_a <= len_e &&
-	   len_a <= len_f &&
-	   len_a <= len_g &&
-	   len_a <= len_h {
-		view.lead_pool = pool_a; view.lead_role = 0
-		view.test_pool_1 = pool_b; view.test1_role = 1
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_b <= len_a &&
-	   len_b <= len_c &&
-	   len_b <= len_d &&
-	   len_b <= len_e &&
-	   len_b <= len_f &&
-	   len_b <= len_g &&
-	   len_b <= len_h {
-		view.lead_pool = pool_b; view.lead_role = 1
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_c; view.test2_role = 2
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_c <= len_a &&
-	   len_c <= len_b &&
-	   len_c <= len_d &&
-	   len_c <= len_e &&
-	   len_c <= len_f &&
-	   len_c <= len_g &&
-	   len_c <= len_h {
-		view.lead_pool = pool_c; view.lead_role = 2
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_d; view.test3_role = 3
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_d <= len_a &&
-	   len_d <= len_b &&
-	   len_d <= len_c &&
-	   len_d <= len_e &&
-	   len_d <= len_f &&
-	   len_d <= len_g &&
-	   len_d <= len_h {
-		view.lead_pool = pool_d; view.lead_role = 3
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_e; view.test4_role = 4
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_e <= len_a &&
-	   len_e <= len_b &&
-	   len_e <= len_c &&
-	   len_e <= len_d &&
-	   len_e <= len_e &&
-	   len_e <= len_f &&
-	   len_e <= len_g &&
-	   len_e <= len_h {
-		view.lead_pool = pool_e; view.lead_role = 4
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_f; view.test5_role = 5
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_f <= len_a &&
-	   len_f <= len_b &&
-	   len_f <= len_c &&
-	   len_f <= len_d &&
-	   len_f <= len_e &&
-	   len_f <= len_f &&
-	   len_f <= len_g &&
-	   len_f <= len_h {
-		view.lead_pool = pool_f; view.lead_role = 5
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-		view.test_pool_6 = pool_g; view.test6_role = 6
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else if len_g <= len_a &&
-	   len_g <= len_b &&
-	   len_g <= len_c &&
-	   len_g <= len_d &&
-	   len_g <= len_e &&
-	   len_g <= len_f &&
-	   len_g <= len_g &&
-	   len_g <= len_h {
-		view.lead_pool = pool_g; view.lead_role = 6
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-		view.test_pool_6 = pool_f; view.test6_role = 5
-		view.test_pool_7 = pool_h; view.test7_role = 7
-	} else {
-		view.lead_pool = pool_h; view.lead_role = 7
-		view.test_pool_1 = pool_a; view.test1_role = 0
-		view.test_pool_2 = pool_b; view.test2_role = 1
-		view.test_pool_3 = pool_c; view.test3_role = 2
-		view.test_pool_4 = pool_d; view.test4_role = 3
-		view.test_pool_5 = pool_e; view.test5_role = 4
-		view.test_pool_6 = pool_f; view.test6_role = 5
-		view.test_pool_7 = pool_g; view.test7_role = 6
-	}
-
-	return view
 }
 
 view8_next :: proc(
@@ -1075,58 +678,72 @@ view8_next :: proc(
 
 		entity = view.lead_pool.dense[curr_idx]
 
-		idx1, ok1 := pool_get_index(view.test_pool_1, entity)
-		if !ok1 do continue
-		idx2, ok2 := pool_get_index(view.test_pool_2, entity)
-		if !ok2 do continue
-		idx3, ok3 := pool_get_index(view.test_pool_3, entity)
-		if !ok3 do continue
-		idx4, ok4 := pool_get_index(view.test_pool_4, entity)
-		if !ok4 do continue
-		idx5, ok5 := pool_get_index(view.test_pool_5, entity)
-		if !ok5 do continue
-		idx6, ok6 := pool_get_index(view.test_pool_6, entity)
-		if !ok6 do continue
-		idx7, ok7 := pool_get_index(view.test_pool_7, entity)
-		if !ok7 do continue
+		idx_a, ok_a := pool_resolve_index(
+			view.pool_a,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_a,
+		)
+		if !ok_a do continue
+		idx_b, ok_b := pool_resolve_index(
+			view.pool_b,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_b,
+		)
+		if !ok_b do continue
+		idx_c, ok_c := pool_resolve_index(
+			view.pool_c,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_c,
+		)
+		if !ok_c do continue
+		idx_d, ok_d := pool_resolve_index(
+			view.pool_d,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_d,
+		)
+		if !ok_d do continue
+		idx_e, ok_e := pool_resolve_index(
+			view.pool_e,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_e,
+		)
+		if !ok_e do continue
+		idx_f, ok_f := pool_resolve_index(
+			view.pool_f,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_f,
+		)
+		if !ok_f do continue
+		idx_g, ok_g := pool_resolve_index(
+			view.pool_g,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_g,
+		)
+		if !ok_g do continue
+		idx_h, ok_h := pool_resolve_index(
+			view.pool_h,
+			entity,
+			curr_idx,
+			view.lead_pool == view.pool_h,
+		)
+		if !ok_h do continue
 
-		lead_ptr :=
-			view.lead_pool.element_size > 0 ? &view.lead_pool.component_data[curr_idx * view.lead_pool.element_size] : nil
-		test1_ptr :=
-			view.test_pool_1.element_size > 0 ? &view.test_pool_1.component_data[idx1 * view.test_pool_1.element_size] : nil
-		test2_ptr :=
-			view.test_pool_2.element_size > 0 ? &view.test_pool_2.component_data[idx2 * view.test_pool_2.element_size] : nil
-		test3_ptr :=
-			view.test_pool_3.element_size > 0 ? &view.test_pool_3.component_data[idx3 * view.test_pool_3.element_size] : nil
-		test4_ptr :=
-			view.test_pool_4.element_size > 0 ? &view.test_pool_4.component_data[idx4 * view.test_pool_4.element_size] : nil
-		test5_ptr :=
-			view.test_pool_5.element_size > 0 ? &view.test_pool_5.component_data[idx5 * view.test_pool_5.element_size] : nil
-		test6_ptr :=
-			view.test_pool_6.element_size > 0 ? &view.test_pool_6.component_data[idx6 * view.test_pool_6.element_size] : nil
-		test7_ptr :=
-			view.test_pool_7.element_size > 0 ? &view.test_pool_7.component_data[idx7 * view.test_pool_7.element_size] : nil
-
-		ptrs: [8]rawptr
-		ptrs[view.lead_role] = lead_ptr
-		ptrs[view.test1_role] = test1_ptr
-		ptrs[view.test2_role] = test2_ptr
-		ptrs[view.test3_role] = test3_ptr
-		ptrs[view.test4_role] = test4_ptr
-		ptrs[view.test5_role] = test5_ptr
-		ptrs[view.test6_role] = test6_ptr
-		ptrs[view.test7_role] = test7_ptr
-
-		return entity,
-			cast(^A)ptrs[0],
-			cast(^B)ptrs[1],
-			cast(^C)ptrs[2],
-			cast(^D)ptrs[3],
-			cast(^E)ptrs[4],
-			cast(^F)ptrs[5],
-			cast(^G)ptrs[6],
-			cast(^H)ptrs[7],
-			true
+		a = pool_component_ptr(view.pool_a, idx_a, A)
+		b = pool_component_ptr(view.pool_b, idx_b, B)
+		c = pool_component_ptr(view.pool_c, idx_c, C)
+		d = pool_component_ptr(view.pool_d, idx_d, D)
+		e = pool_component_ptr(view.pool_e, idx_e, E)
+		f = pool_component_ptr(view.pool_f, idx_f, F)
+		g = pool_component_ptr(view.pool_g, idx_g, G)
+		h = pool_component_ptr(view.pool_h, idx_h, H)
+		return entity, a, b, c, d, e, f, g, h, true
 	}
 	return {}, nil, nil, nil, nil, nil, nil, nil, nil, false
 }

@@ -68,7 +68,7 @@ world_register_component :: proc(world: ^World, $T: typeid, initial_capacity: in
 }
 
 world_entity_count :: proc(world: ^World) -> int {
-	return int(world._next_index) - len(world._free_indices)
+	return int(world._next_index) - len(world._free_indices) - world._cmd_buffer.pending_creates
 }
 
 world_get_all_alive_entities :: proc(
@@ -76,17 +76,24 @@ world_get_all_alive_entities :: proc(
 	allocator := context.temp_allocator,
 ) -> []Entity {
 	count := world_entity_count(world)
-	if count == 0 do return nil
+	if count <= 0 do return nil
 
 	free_map := make([]bool, world._next_index, context.temp_allocator)
 	for free_id in world._free_indices {
 		free_map[free_id] = true
 	}
+	if world._cmd_buffer.pending_creates > 0 {
+		for cmd in world._cmd_buffer.commands {
+			if cmd.kind == .Create_Entity {
+				free_map[cmd.entity.id] = true
+			}
+		}
+	}
 
 	entities := make([]Entity, count, allocator)
 	idx := 0
 	for id in 0 ..< world._next_index {
-		if !free_map[id] {
+		if !free_map[id] && world._generations[id] > 0 {
 			entities[idx] = Entity {
 				id  = id,
 				gen = world._generations[id],

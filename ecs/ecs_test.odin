@@ -31,8 +31,40 @@ Align32 :: struct #align (32) {
 	data: [8]f32,
 }
 
+// Packed struct with non-power-of-two size (5 bytes) to test stride & over-read safety
+Packed5 :: struct #packed {
+	a: u32,
+	b: u8,
+}
+
 // Zero-sized tag component to test edge cases
 Tag_Enemy :: struct {}
+
+// Test components for multi-view testing
+CompA :: struct {
+	val: int,
+}
+CompB :: struct {
+	val: int,
+}
+CompC :: struct {
+	val: int,
+}
+CompD :: struct {
+	val: int,
+}
+CompE :: struct {
+	val: int,
+}
+CompF :: struct {
+	val: int,
+}
+CompG :: struct {
+	val: int,
+}
+CompH :: struct {
+	val: int,
+}
 
 
 // ---------------------------------------------------------
@@ -50,8 +82,10 @@ test_entity_lifecycle :: proc(t: ^testing.T) {
 	world_init(&world, 8, allocator)
 	defer world_destroy(&world)
 
-	// Verify initial counts
+	// Verify initial counts and nil/zero entity status
 	testing.expect_value(t, world_entity_count(&world), 0)
+	testing.expect(t, !entity_alive(&world, Entity{}), "Entity{} with gen=0 must never be alive")
+	testing.expect(t, !entity_alive(&world, Entity{id = 0, gen = 0}))
 
 	// Create entities and verify they are alive
 	e0 := entity_create(&world)
@@ -115,11 +149,13 @@ test_component_storage_and_alignment :: proc(t: ^testing.T) {
 	world_register_component(&world, Position, 16)
 	world_register_component(&world, Align16, 2)
 	world_register_component(&world, Align32) // should use default World capacity
+	world_register_component(&world, Packed5)
 
 	// Verify capacities
 	testing.expect_value(t, world._component_pools[Position].capacity, 16)
 	testing.expect_value(t, world._component_pools[Align16].capacity, 2)
 	testing.expect_value(t, world._component_pools[Align32].capacity, 4)
+	testing.expect_value(t, world._component_pools[Packed5].data_size, 5)
 
 	// Insert elements
 	e0 := entity_create(&world)
@@ -127,12 +163,21 @@ test_component_storage_and_alignment :: proc(t: ^testing.T) {
 
 	entity_add_component(&world, e0, Position{x = 1.5, y = 2.5})
 	entity_add_component(&world, e0, Align16{values = {1, 2, 3, 4}})
+	entity_add_component(&world, e0, Packed5{a = 42, b = 7})
 	entity_add_component(&world, e1, Align32{data = {5, 6, 7, 8, 9, 10, 11, 12}})
 
 	// Verify retrieval and memory alignments
 	pos0 := entity_get_component(&world, e0, Position)
 	a16_0 := entity_get_component(&world, e0, Align16)
+	p5_0 := entity_get_component(&world, e0, Packed5)
 	a32_1 := entity_get_component(&world, e1, Align32)
+
+	testing.expect(t, entity_has_component(&world, e0, Position))
+	testing.expect(t, entity_has_component(&world, e0, Packed5))
+	testing.expect(t, !entity_has_component(&world, e1, Packed5))
+	testing.expect(t, p5_0 != nil)
+	testing.expect_value(t, p5_0.a, u32(42))
+	testing.expect_value(t, p5_0.b, u8(7))
 
 	testing.expect(t, pos0 != nil)
 	testing.expect_value(t, pos0.x, f32(1.5))
@@ -195,7 +240,9 @@ test_zero_sized_components :: proc(t: ^testing.T) {
 	// Add zero-sized component
 	entity_add_component(&world, e0, Tag_Enemy{})
 
-	// Check presence
+	// Check presence with entity_has_component and entity_get_component
+	testing.expect(t, entity_has_component(&world, e0, Tag_Enemy))
+	testing.expect(t, !entity_has_component(&world, e1, Tag_Enemy))
 	testing.expect(
 		t,
 		entity_get_component(&world, e0, Tag_Enemy) != nil,
@@ -203,8 +250,19 @@ test_zero_sized_components :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, entity_get_component(&world, e1, Tag_Enemy) == nil)
 
+	// Test zero-sized component inside a View
+	view := view_create(&world, Tag_Enemy)
+	tag_count := 0
+	for ent, tag, ok := view_next(&view); ok; ent, tag, ok = view_next(&view) {
+		tag_count += 1
+		testing.expect_value(t, ent, e0)
+		testing.expect(t, tag != nil, "Tag component in view_next must not be nil")
+	}
+	testing.expect_value(t, tag_count, 1)
+
 	// Remove tag
 	entity_remove_component(&world, e0, Tag_Enemy)
+	testing.expect(t, !entity_has_component(&world, e0, Tag_Enemy))
 	testing.expect(
 		t,
 		entity_get_component(&world, e0, Tag_Enemy) == nil,
@@ -323,7 +381,17 @@ test_deferred_operations_integrity :: proc(t: ^testing.T) {
 	entity_add_component(&world, e1, Position{10, 20})
 	entity_add_component(&world, e1, Velocity{1, 1})
 
-	testing.expect(t, entity_alive(&world, e1), "Entity ID is allocated immediately")
+	testing.expect(
+		t,
+		!entity_alive(&world, e1),
+		"e1 must be pending (not alive) until flush occurs",
+	)
+	testing.expect(
+		t,
+		!entity_alive(&world, e1),
+		"e1 must be pending (not alive) until flush occurs",
+	)
+	testing.expect_value(t, world_entity_count(&world), 1)
 	testing.expect(
 		t,
 		entity_get_component(&world, e1, Position) == nil,
@@ -336,7 +404,8 @@ test_deferred_operations_integrity :: proc(t: ^testing.T) {
 
 	// Verify deferred changes are fully flushed
 	testing.expect(t, !entity_alive(&world, e0), "e0 must be destroyed now")
-	testing.expect(t, entity_alive(&world, e1))
+	testing.expect(t, entity_alive(&world, e1), "e1 must be alive after flush")
+	testing.expect_value(t, world_entity_count(&world), 1)
 
 	pos1 := entity_get_component(&world, e1, Position)
 	vel1 := entity_get_component(&world, e1, Velocity)
@@ -344,6 +413,23 @@ test_deferred_operations_integrity :: proc(t: ^testing.T) {
 	testing.expect_value(t, pos1.x, f32(10))
 	testing.expect(t, vel1 != nil)
 	testing.expect_value(t, vel1.vx, f32(1))
+
+	// Next: test deferred creation with a recycled entity ID
+	entity_destroy(&world, e1)
+	testing.expect_value(t, world_entity_count(&world), 0)
+
+	world_defer_begin(&world)
+	e2 := entity_create(&world)
+	testing.expect_value(t, e2.id, e1.id)
+	testing.expect(t, e2.gen > e1.gen, "e2 must have higher generation than e1")
+	testing.expect(t, !entity_alive(&world, e2), "e2 must be pending (not alive) until flush")
+	testing.expect(t, !entity_alive(&world, e1), "e1 must still be dead")
+	testing.expect_value(t, world_entity_count(&world), 0)
+
+	world_defer_end(&world)
+	testing.expect(t, entity_alive(&world, e2), "e2 must be alive after flush")
+	testing.expect(t, !entity_alive(&world, e1), "e1 must remain dead")
+	testing.expect_value(t, world_entity_count(&world), 1)
 
 	testing.expect_value(t, len(track.bad_free_array), 0)
 }
@@ -458,6 +544,103 @@ test_event_stream_functionality :: proc(t: ^testing.T) {
 	// Clear stream
 	event_stream_clear(&stream)
 	testing.expect_value(t, len(event_stream_events(&stream)), 0)
+
+	testing.expect_value(t, len(track.bad_free_array), 0)
+}
+
+
+// ---------------------------------------------------------
+// 8. LARGE VIEWS & LEAD POOL SELECTION TESTS
+// ---------------------------------------------------------
+
+@(test)
+test_large_views_and_lead_selection :: proc(t: ^testing.T) {
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	allocator := mem.tracking_allocator(&track)
+
+	world: World
+	world_init(&world, 8, allocator)
+	defer world_destroy(&world)
+
+	world_register_component(&world, CompA)
+	world_register_component(&world, CompB)
+	world_register_component(&world, CompC)
+	world_register_component(&world, CompD)
+	world_register_component(&world, CompE)
+	world_register_component(&world, CompF)
+	world_register_component(&world, CompG)
+	world_register_component(&world, CompH)
+
+	// Create 10 entities with CompA
+	ents: [10]Entity
+	for i in 0 ..< 10 {
+		ents[i] = entity_create(&world)
+		entity_add_component(&world, ents[i], CompA{val = i})
+	}
+
+	// Add CompB to only 5 entities
+	for i in 0 ..< 5 {
+		entity_add_component(&world, ents[i], CompB{val = i * 10})
+	}
+
+	// Add CompC to only 3 entities
+	for i in 0 ..< 3 {
+		entity_add_component(&world, ents[i], CompC{val = i * 100})
+	}
+
+	// Add CompD to only 2 entities (ents[0] and ents[1])
+	entity_add_component(&world, ents[0], CompD{val = 1000})
+	entity_add_component(&world, ents[1], CompD{val = 2000})
+
+	// Test View4 where CompD has the smallest pool (lead pool is at the end)
+	view4 := view_create(&world, CompA, CompB, CompC, CompD)
+	testing.expect_value(t, view4.lead_pool, world._component_pools[CompD])
+
+	count4 := 0
+	for e, a, b, c, d, ok := view_next(&view4); ok; e, a, b, c, d, ok = view_next(&view4) {
+		count4 += 1
+		testing.expect(t, e == ents[0] || e == ents[1])
+		testing.expect(t, a != nil && b != nil && c != nil && d != nil)
+		if e == ents[0] {
+			testing.expect_value(t, a.val, 0)
+			testing.expect_value(t, b.val, 0)
+			testing.expect_value(t, c.val, 0)
+			testing.expect_value(t, d.val, 1000)
+		} else if e == ents[1] {
+			testing.expect_value(t, a.val, 1)
+			testing.expect_value(t, b.val, 10)
+			testing.expect_value(t, c.val, 100)
+			testing.expect_value(t, d.val, 2000)
+		}
+	}
+	testing.expect_value(t, count4, 2)
+
+	// Now equip ents[0] with all remaining components (CompE..CompH)
+	entity_add_component(&world, ents[0], CompE{val = 5})
+	entity_add_component(&world, ents[0], CompF{val = 6})
+	entity_add_component(&world, ents[0], CompG{val = 7})
+	entity_add_component(&world, ents[0], CompH{val = 8})
+
+	// Test View8: only ents[0] should match
+	view8 := view_create(&world, CompA, CompB, CompC, CompD, CompE, CompF, CompG, CompH)
+	count8 := 0
+	for e, a, b, c, d, ee, f, g, h, ok := view_next(&view8);
+	    ok;
+	    e, a, b, c, d, ee, f, g, h, ok = view_next(&view8) {
+		count8 += 1
+		testing.expect_value(t, e, ents[0])
+		testing.expect_value(t, a.val, 0)
+		testing.expect_value(t, b.val, 0)
+		testing.expect_value(t, c.val, 0)
+		testing.expect_value(t, d.val, 1000)
+		testing.expect_value(t, ee.val, 5)
+		testing.expect_value(t, f.val, 6)
+		testing.expect_value(t, g.val, 7)
+		testing.expect_value(t, h.val, 8)
+	}
+	testing.expect_value(t, count8, 1)
 
 	testing.expect_value(t, len(track.bad_free_array), 0)
 }

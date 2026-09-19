@@ -11,12 +11,32 @@ Entity :: struct {
 
 
 entity_alive :: proc(world: ^World, entity: Entity) -> bool {
+	if entity.gen == 0 do return false
 	if int(entity.id) >= len(world._generations) do return false
 	return world._generations[entity.id] == entity.gen
 }
 
 entity_create :: proc(world: ^World) -> Entity {
 	idx: u32
+	gen: u32
+
+	if world._defer_depth > 0 {
+		if len(world._free_indices) > 0 {
+			idx = pop(&world._free_indices)
+			gen = world._generations[idx] + 1
+		} else {
+			idx = world._next_index
+			world._next_index += 1
+			append(&world._generations, u32(0))
+			gen = 1
+		}
+		ent := Entity {
+			id  = idx,
+			gen = gen,
+		}
+		command_buffer_create_entity(&world._cmd_buffer, ent)
+		return ent
+	}
 
 	if len(world._free_indices) > 0 {
 		idx = pop(&world._free_indices)
@@ -59,6 +79,13 @@ entity_get_component :: proc(world: ^World, entity: Entity, $T: typeid) -> ^T {
 	raw_ptr := pool_get(world._component_pools[T], entity)
 	if raw_ptr == nil do return nil
 	return cast(^T)(raw_ptr)
+}
+
+entity_has_component :: proc(world: ^World, entity: Entity, $T: typeid) -> bool {
+	if !entity_alive(world, entity) do return false
+	pool, ok := world._component_pools[T]
+	if !ok do return false
+	return pool_has(pool, entity)
 }
 
 entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {

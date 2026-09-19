@@ -5,6 +5,7 @@ import log "core:log"
 import mem "core:mem"
 
 Command_Kind :: enum {
+	Create_Entity,
 	Destroy_Entity,
 	Remove_Component,
 	Add_Component,
@@ -19,11 +20,12 @@ Command :: struct {
 }
 
 Command_Buffer :: struct {
-	commands:  [dynamic]Command,
-	data:      []byte,
-	data_len:  int,
-	data_cap:  int,
-	allocator: mem.Allocator,
+	commands:        [dynamic]Command,
+	data:            []byte,
+	data_len:        int,
+	data_cap:        int,
+	pending_creates: int,
+	allocator:       mem.Allocator,
 }
 
 command_buffer_init :: proc(
@@ -51,6 +53,7 @@ command_buffer_init :: proc(
 		cb.data_cap = initial_data_cap
 	}
 	cb.data_len = 0
+	cb.pending_creates = 0
 }
 
 command_buffer_destroy :: proc(cb: ^Command_Buffer) {
@@ -61,6 +64,7 @@ command_buffer_destroy :: proc(cb: ^Command_Buffer) {
 	}
 	cb.data_len = 0
 	cb.data_cap = 0
+	cb.pending_creates = 0
 }
 
 command_buffer_grow_data :: proc(cb: ^Command_Buffer, min_capacity: int) {
@@ -93,6 +97,11 @@ command_buffer_grow_data :: proc(cb: ^Command_Buffer, min_capacity: int) {
 	cb.data_cap = new_cap
 }
 
+command_buffer_create_entity :: proc(cb: ^Command_Buffer, entity: Entity) {
+	append(&cb.commands, Command{kind = .Create_Entity, entity = entity})
+	cb.pending_creates += 1
+}
+
 command_buffer_destroy_entity :: proc(cb: ^Command_Buffer, entity: Entity) {
 	append(&cb.commands, Command{kind = .Destroy_Entity, entity = entity})
 }
@@ -107,6 +116,7 @@ command_buffer_remove_component :: proc(cb: ^Command_Buffer, entity: Entity, $T:
 command_buffer_add_component :: proc(cb: ^Command_Buffer, entity: Entity, component: $T) {
 	elem_size := size_of(T)
 	elem_align := max(align_of(T), 1)
+	assert(elem_align <= 64, "Component alignment exceeds command buffer max alignment (64 bytes)")
 
 	offset := cb.data_len
 	aligned_offset := mem.align_forward_int(offset, elem_align)
@@ -146,6 +156,9 @@ command_buffer_add_component :: proc(cb: ^Command_Buffer, entity: Entity, compon
 command_buffer_flush :: proc(world: ^World, cb: ^Command_Buffer) {
 	for cmd in cb.commands {
 		switch cmd.kind {
+		case .Create_Entity:
+			world._generations[cmd.entity.id] = cmd.entity.gen
+
 		case .Destroy_Entity:
 			entity_destroy_immediate(world, cmd.entity)
 
@@ -163,4 +176,5 @@ command_buffer_flush :: proc(world: ^World, cb: ^Command_Buffer) {
 
 	clear(&cb.commands)
 	cb.data_len = 0
+	cb.pending_creates = 0
 }
