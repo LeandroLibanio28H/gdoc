@@ -1,3 +1,9 @@
-main.odin
+.build/
+.zed/
+assets/
+*.log
 *.exe
 *.pdb
+main.odin
+_config
+*ARQUITETURA.md
