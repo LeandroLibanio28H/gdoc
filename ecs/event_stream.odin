@@ -19,8 +19,10 @@ event_stream_destroy :: proc(stream: ^Event_Stream($T)) {
 }
 
 event_stream_push :: proc(stream: ^Event_Stream($T), event: T) {
-	if len(stream.events) == 0 && cap(stream.events) == 0 do event_stream_init(stream)
-	append(&stream.events, event)
+    if stream.events.allocator.procedure == nil {
+        event_stream_init(stream)
+    }
+    append(&stream.events, event)
 }
 
 event_stream_clear :: proc(stream: ^Event_Stream($T)) {

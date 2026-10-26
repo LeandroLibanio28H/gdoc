@@ -29,7 +29,6 @@ world_destroy :: proc(world: ^World) {
 	command_buffer_destroy(&world._cmd_buffer)
 	for _, pool in world._component_pools {
 		pool_destroy(pool)
-		free(pool, world.allocator)
 	}
 	delete(world._component_pools)
 	delete(world._free_indices)
@@ -78,25 +77,15 @@ world_get_all_alive_entities :: proc(
 	count := world_entity_count(world)
 	if count <= 0 do return nil
 
-	free_map := make([]bool, world._next_index, context.temp_allocator)
-	for free_id in world._free_indices {
-		free_map[free_id] = true
-	}
-	if world._cmd_buffer.pending_creates > 0 {
-		for cmd in world._cmd_buffer.commands {
-			if cmd.kind == .Create_Entity {
-				free_map[cmd.entity.id] = true
-			}
-		}
-	}
-
 	entities := make([]Entity, count, allocator)
 	idx := 0
+
 	for id in 0 ..< world._next_index {
-		if !free_map[id] && world._generations[id] > 0 {
+		gen := world._generations[id]
+		if (gen & 1) == 1 {
 			entities[idx] = Entity {
 				id  = id,
-				gen = world._generations[id],
+				gen = 1,
 			}
 			idx += 1
 		}

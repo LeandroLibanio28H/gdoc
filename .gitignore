@@ -1,9 +1,10 @@
 .build/
 .zed/
+_docs/
+_config
 assets/
 *.log
 *.exe
 *.pdb
-main.odin
-_config
 *ARQUITETURA.md
+main.odin

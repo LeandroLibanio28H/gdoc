@@ -102,13 +102,3 @@ GDOC includes built-in tests with memory tracking to ensure zero leaks:
 ```bash
 odin test ecs
 ```
-
----
-
-## Roadmap
-
-GDOC is an evolving toolkit. Future utility modules under consideration:
-
-- [x] **ECS**: Sparse-set entity component system, views, command buffer, and event streams.
-- [ ] **Math**: Common game math helpers.
-- [ ] **Data Structures**: Specialized game containers (ring buffers, object pools, arena helpers).

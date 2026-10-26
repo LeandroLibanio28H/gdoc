@@ -253,7 +253,7 @@ test_zero_sized_components :: proc(t: ^testing.T) {
 	// Test zero-sized component inside a View
 	view := view_create(&world, Tag_Enemy)
 	tag_count := 0
-	for ent, tag, ok := view_next(&view); ok; ent, tag, ok = view_next(&view) {
+	for ent, tag in view_next(&view) {
 		tag_count += 1
 		testing.expect_value(t, ent, e0)
 		testing.expect(t, tag != nil, "Tag component in view_next must not be nil")
@@ -313,7 +313,7 @@ test_views_and_iteration :: proc(t: ^testing.T) {
 	// Query single component (View1)
 	count1 := 0
 	view1 := view_create(&world, Position)
-	for _, pos, ok := view_next(&view1); ok; _, pos, ok = view_next(&view1) {
+	for _, pos in view_next(&view1) {
 		count1 += 1
 		testing.expect(t, pos != nil)
 	}
@@ -322,7 +322,7 @@ test_views_and_iteration :: proc(t: ^testing.T) {
 	// Query two components (View2) - should match e0, e1, e3
 	count2 := 0
 	view2 := view_create(&world, Position, Velocity)
-	for _, pos, vel, ok := view_next(&view2); ok; _, pos, vel, ok = view_next(&view2) {
+	for _, pos, vel in view_next(&view2) {
 		count2 += 1
 		testing.expect(t, pos != nil)
 		testing.expect(t, vel != nil)
@@ -332,7 +332,7 @@ test_views_and_iteration :: proc(t: ^testing.T) {
 	// Query three components (View3) - should match e0 and e3
 	count3 := 0
 	view3 := view_create(&world, Position, Velocity, Name)
-	for e, pos, vel, name, ok := view_next(&view3); ok; e, pos, vel, name, ok = view_next(&view3) {
+	for e, pos, vel, name in view_next(&view3) {
 		count3 += 1
 		testing.expect(t, e == e0 || e == e3)
 		testing.expect(t, pos != nil)
@@ -381,11 +381,6 @@ test_deferred_operations_integrity :: proc(t: ^testing.T) {
 	entity_add_component(&world, e1, Position{10, 20})
 	entity_add_component(&world, e1, Velocity{1, 1})
 
-	testing.expect(
-		t,
-		!entity_alive(&world, e1),
-		"e1 must be pending (not alive) until flush occurs",
-	)
 	testing.expect(
 		t,
 		!entity_alive(&world, e1),
@@ -466,7 +461,7 @@ test_safe_iteration_during_view_mutations :: proc(t: ^testing.T) {
 	world_defer_begin(&world)
 
 	view := view_create(&world, Position)
-	for e, pos, ok := view_next(&view); ok; e, pos, ok = view_next(&view) {
+	for e, pos in view_next(&view) {
 		visited_count += 1
 		visited_mask[e.id] = true
 
@@ -599,7 +594,7 @@ test_large_views_and_lead_selection :: proc(t: ^testing.T) {
 	testing.expect_value(t, view4.lead_pool, world._component_pools[CompD])
 
 	count4 := 0
-	for e, a, b, c, d, ok := view_next(&view4); ok; e, a, b, c, d, ok = view_next(&view4) {
+	for e, a, b, c, d in view_next(&view4) {
 		count4 += 1
 		testing.expect(t, e == ents[0] || e == ents[1])
 		testing.expect(t, a != nil && b != nil && c != nil && d != nil)
@@ -626,9 +621,7 @@ test_large_views_and_lead_selection :: proc(t: ^testing.T) {
 	// Test View8: only ents[0] should match
 	view8 := view_create(&world, CompA, CompB, CompC, CompD, CompE, CompF, CompG, CompH)
 	count8 := 0
-	for e, a, b, c, d, ee, f, g, h, ok := view_next(&view8);
-	    ok;
-	    e, a, b, c, d, ee, f, g, h, ok = view_next(&view8) {
+	for e, a, b, c, d, ee, f, g, h in view_next(&view8) {
 		count8 += 1
 		testing.expect_value(t, e, ents[0])
 		testing.expect_value(t, a.val, 0)
