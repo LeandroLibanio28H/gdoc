@@ -4,7 +4,7 @@ package ecs
 entity_destroy_immediate :: proc(world: ^World, entity: Entity) {
 	if !entity_alive(world, entity) do return
 
-	for _, pool in world._component_pools {
+	for pool in world._pool_list {
 		pool_remove(pool, entity)
 	}
 

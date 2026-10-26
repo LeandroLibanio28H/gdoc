@@ -9,6 +9,7 @@ World :: struct {
 	_free_indices:     [dynamic]u32,
 	_generations:      [dynamic]u32,
 	_component_pools:  map[typeid]^Component_Pool,
+	_pool_list:        [dynamic]^Component_Pool,
 	_cmd_buffer:       Command_Buffer,
 	_defer_depth:      int,
 	allocator:         mem.Allocator,
@@ -22,14 +23,16 @@ world_init :: proc(world: ^World, initial_capacity: int, allocator := context.al
 	world._free_indices = make([dynamic]u32, 0, initial_capacity, allocator)
 	world._generations = make([dynamic]u32, 0, initial_capacity, allocator)
 	world._component_pools = make(map[typeid]^Component_Pool, allocator)
+	world._pool_list = make([dynamic]^Component_Pool, 0, 32, allocator)
 	command_buffer_init(&world._cmd_buffer, 64, allocator)
 }
 
 world_destroy :: proc(world: ^World) {
 	command_buffer_destroy(&world._cmd_buffer)
-	for _, pool in world._component_pools {
+	for pool in world._pool_list {
 		pool_destroy(pool)
 	}
+	delete(world._pool_list)
 	delete(world._component_pools)
 	delete(world._free_indices)
 	delete(world._generations)
@@ -64,6 +67,7 @@ world_register_component :: proc(world: ^World, $T: typeid, initial_capacity: in
 	cap := initial_capacity >= 0 ? initial_capacity : world._initial_capacity
 	pool := pool_init(T, cap, world.allocator)
 	world._component_pools[T] = pool
+	append(&world._pool_list, pool)
 }
 
 world_entity_count :: proc(world: ^World) -> int {
