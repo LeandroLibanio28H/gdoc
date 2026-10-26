@@ -89,10 +89,21 @@ world_get_all_alive_entities :: proc(
 		if (gen & 1) == 1 {
 			entities[idx] = Entity {
 				id  = id,
-				gen = 1,
+				gen = gen,
 			}
 			idx += 1
 		}
 	}
 	return entities[:idx]
+}
+
+world_component_slice :: proc(world: ^World, $T: typeid) -> (entities: []Entity, components: []T) {
+	pool, ok := world._component_pools[T]
+	if !ok || len(pool.dense) == 0 do return nil, nil
+	when size_of(T) == 0 {
+		return pool.dense[:], nil
+	} else {
+		comp_ptr := cast([^]T)pool.component_data
+		return pool.dense[:], comp_ptr[:len(pool.dense)]
+	}
 }

@@ -251,12 +251,14 @@ test_zero_sized_components :: proc(t: ^testing.T) {
 	testing.expect(t, entity_get_component(&world, e1, Tag_Enemy) == nil)
 
 	// Test zero-sized component inside a View
-	view := view_create(&world, Tag_Enemy)
+	view := view_create(&world, struct {
+			tag: ^Tag_Enemy,
+		})
 	tag_count := 0
 	for ent, tag in view_next(&view) {
 		tag_count += 1
 		testing.expect_value(t, ent, e0)
-		testing.expect(t, tag != nil, "Tag component in view_next must not be nil")
+		testing.expect(t, tag.tag != nil, "Tag component in view_next must not be nil")
 	}
 	testing.expect_value(t, tag_count, 1)
 
@@ -312,32 +314,41 @@ test_views_and_iteration :: proc(t: ^testing.T) {
 
 	// Query single component (View1)
 	count1 := 0
-	view1 := view_create(&world, Position)
-	for _, pos in view_next(&view1) {
+	view1 := view_create(&world, struct {
+			pos: ^Position,
+		})
+	for _, q in view_next(&view1) {
 		count1 += 1
-		testing.expect(t, pos != nil)
+		testing.expect(t, q.pos != nil)
 	}
 	testing.expect_value(t, count1, 3)
 
 	// Query two components (View2) - should match e0, e1, e3
 	count2 := 0
-	view2 := view_create(&world, Position, Velocity)
-	for _, pos, vel in view_next(&view2) {
+	view2 := view_create(&world, struct {
+			pos: ^Position,
+			vel: ^Velocity,
+		})
+	for _, q in view_next(&view2) {
 		count2 += 1
-		testing.expect(t, pos != nil)
-		testing.expect(t, vel != nil)
+		testing.expect(t, q.pos != nil)
+		testing.expect(t, q.vel != nil)
 	}
 	testing.expect_value(t, count2, 3)
 
 	// Query three components (View3) - should match e0 and e3
 	count3 := 0
-	view3 := view_create(&world, Position, Velocity, Name)
-	for e, pos, vel, name in view_next(&view3) {
+	view3 := view_create(&world, struct {
+			pos:  ^Position,
+			vel:  ^Velocity,
+			name: ^Name,
+		})
+	for e, q in view_next(&view3) {
 		count3 += 1
 		testing.expect(t, e == e0 || e == e3)
-		testing.expect(t, pos != nil)
-		testing.expect(t, vel != nil)
-		testing.expect(t, name != nil)
+		testing.expect(t, q.pos != nil)
+		testing.expect(t, q.vel != nil)
+		testing.expect(t, q.name != nil)
 	}
 	testing.expect_value(t, count3, 2)
 
@@ -460,8 +471,10 @@ test_safe_iteration_during_view_mutations :: proc(t: ^testing.T) {
 	// Mutating the world structurally inside iteration using deferred buffer
 	world_defer_begin(&world)
 
-	view := view_create(&world, Position)
-	for e, pos in view_next(&view) {
+	view := view_create(&world, struct {
+			_: Position,
+		})
+	for e, _ in view_next(&view) {
 		visited_count += 1
 		visited_mask[e.id] = true
 
@@ -590,24 +603,29 @@ test_large_views_and_lead_selection :: proc(t: ^testing.T) {
 	entity_add_component(&world, ents[1], CompD{val = 2000})
 
 	// Test View4 where CompD has the smallest pool (lead pool is at the end)
-	view4 := view_create(&world, CompA, CompB, CompC, CompD)
+	view4 := view_create(&world, struct {
+			a: ^CompA,
+			b: ^CompB,
+			c: ^CompC,
+			d: ^CompD,
+		})
 	testing.expect_value(t, view4.lead_pool, world._component_pools[CompD])
 
 	count4 := 0
-	for e, a, b, c, d in view_next(&view4) {
+	for e, q in view_next(&view4) {
 		count4 += 1
 		testing.expect(t, e == ents[0] || e == ents[1])
-		testing.expect(t, a != nil && b != nil && c != nil && d != nil)
+		testing.expect(t, q.a != nil && q.b != nil && q.c != nil && q.d != nil)
 		if e == ents[0] {
-			testing.expect_value(t, a.val, 0)
-			testing.expect_value(t, b.val, 0)
-			testing.expect_value(t, c.val, 0)
-			testing.expect_value(t, d.val, 1000)
+			testing.expect_value(t, q.a.val, 0)
+			testing.expect_value(t, q.b.val, 0)
+			testing.expect_value(t, q.c.val, 0)
+			testing.expect_value(t, q.d.val, 1000)
 		} else if e == ents[1] {
-			testing.expect_value(t, a.val, 1)
-			testing.expect_value(t, b.val, 10)
-			testing.expect_value(t, c.val, 100)
-			testing.expect_value(t, d.val, 2000)
+			testing.expect_value(t, q.a.val, 1)
+			testing.expect_value(t, q.b.val, 10)
+			testing.expect_value(t, q.c.val, 100)
+			testing.expect_value(t, q.d.val, 2000)
 		}
 	}
 	testing.expect_value(t, count4, 2)
@@ -619,19 +637,28 @@ test_large_views_and_lead_selection :: proc(t: ^testing.T) {
 	entity_add_component(&world, ents[0], CompH{val = 8})
 
 	// Test View8: only ents[0] should match
-	view8 := view_create(&world, CompA, CompB, CompC, CompD, CompE, CompF, CompG, CompH)
+	view8 := view_create(&world, struct {
+			a: ^CompA,
+			b: ^CompB,
+			c: ^CompC,
+			d: ^CompD,
+			e: ^CompE,
+			f: ^CompF,
+			g: ^CompG,
+			h: ^CompH,
+		})
 	count8 := 0
-	for e, a, b, c, d, ee, f, g, h in view_next(&view8) {
+	for e, q in view_next(&view8) {
 		count8 += 1
 		testing.expect_value(t, e, ents[0])
-		testing.expect_value(t, a.val, 0)
-		testing.expect_value(t, b.val, 0)
-		testing.expect_value(t, c.val, 0)
-		testing.expect_value(t, d.val, 1000)
-		testing.expect_value(t, ee.val, 5)
-		testing.expect_value(t, f.val, 6)
-		testing.expect_value(t, g.val, 7)
-		testing.expect_value(t, h.val, 8)
+		testing.expect_value(t, q.a.val, 0)
+		testing.expect_value(t, q.b.val, 0)
+		testing.expect_value(t, q.c.val, 0)
+		testing.expect_value(t, q.d.val, 1000)
+		testing.expect_value(t, q.e.val, 5)
+		testing.expect_value(t, q.f.val, 6)
+		testing.expect_value(t, q.g.val, 7)
+		testing.expect_value(t, q.h.val, 8)
 	}
 	testing.expect_value(t, count8, 1)
 

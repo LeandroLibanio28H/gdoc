@@ -55,8 +55,7 @@ entity_destroy :: proc(world: ^World, entity: Entity) {
 entity_add_component :: proc(world: ^World, entity: Entity, component: $T) {
 	tid := typeid_of(T)
 
-	pool, ok := world._component_pools[T]
-	if !ok {
+	if tid not_in world._component_pools {
 		log.error("Attempt to add unregistered component", tid)
 		return
 	}
@@ -89,8 +88,7 @@ entity_has_component :: proc(world: ^World, entity: Entity, $T: typeid) -> bool 
 entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
 	tid := typeid_of(T)
 
-	pool, ok := world._component_pools[T]
-	if !ok {
+	if tid not_in world._component_pools {
 		log.error("Attempt to remove unregistered component", tid)
 		return
 	}

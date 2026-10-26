@@ -127,9 +127,7 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 			)
 			panic("Out of memory")
 		}
-		for i in 0 ..< PAGE_SIZE {
-			new_page[i] = INVALID_INDEX
-		}
+		mem.set(new_page, 0xFF, size_of([PAGE_SIZE]u32))
 		pool.sparse_pages[page_idx] = new_page
 	}
 
@@ -145,8 +143,15 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 				new_cap *= 2
 			}
 
+			old_bytes := pool.capacity * pool.element_size
 			new_bytes := new_cap * pool.element_size
-			new_mem, err := mem.alloc(new_bytes, pool.element_align, pool.allocator)
+			new_mem, err := mem.resize_non_zeroed(
+				pool.component_data,
+				old_bytes,
+				new_bytes,
+				pool.element_align,
+				pool.allocator,
+			)
 			if err != .None {
 				log.errorf(
 					"CRITICAL ERROR: Out of memory to expand component pool to capacity %d (%d bytes). Error: %v",
@@ -156,10 +161,7 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 				)
 				panic("Out of memory")
 			}
-			if pool.component_data != nil && dense_idx > 0 {
-				mem.copy(new_mem, pool.component_data, dense_idx * pool.element_size)
-				mem.free(pool.component_data, pool.allocator)
-			}
+
 			pool.component_data = cast([^]byte)new_mem
 			pool.capacity = new_cap
 		}
@@ -182,7 +184,7 @@ pool_remove :: proc(pool: ^Component_Pool, entity: Entity) {
 	if !ok do return
 
 	page_idx := entity.id >> PAGE_SHIFT
-    offset := entity.id & PAGE_MASK
+	offset := entity.id & PAGE_MASK
 
 	last_dense_idx := len(pool.dense) - 1
 	last_entity := pool.dense[last_dense_idx]

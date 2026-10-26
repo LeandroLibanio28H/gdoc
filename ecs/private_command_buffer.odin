@@ -76,7 +76,13 @@ command_buffer_grow_data :: proc(cb: ^Command_Buffer, min_capacity: int) {
 		new_cap *= 2
 	}
 
-	new_mem, err := mem.alloc(new_cap, 64, cb.allocator)
+	new_mem, err := mem.resize_non_zeroed(
+		raw_data(cb.data),
+		cb.data_cap,
+		new_cap,
+		64,
+		cb.allocator,
+	)
 	if err != .None {
 		log.errorf(
 			"CRITICAL ERROR: Out of memory to expand command buffer data to capacity of %d bytes. Error: %v",
@@ -84,13 +90,6 @@ command_buffer_grow_data :: proc(cb: ^Command_Buffer, min_capacity: int) {
 			err,
 		)
 		panic("Out of memory")
-	}
-
-	if cb.data != nil {
-		if cb.data_len > 0 {
-			mem.copy(new_mem, raw_data(cb.data), cb.data_len)
-		}
-		mem.free(raw_data(cb.data), cb.allocator)
 	}
 
 	cb.data = ([^]byte)(new_mem)[:new_cap]
