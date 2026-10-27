@@ -6,5 +6,5 @@ assets/
 *.log
 *.exe
 *.pdb
-*ARQUITETURA.md
+*ARCHITECTURE.md
 main.odin
