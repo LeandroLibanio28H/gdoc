@@ -1,5 +1,6 @@
 package ecs
 
+import fmt "core:fmt"
 import log "core:log"
 import mem "core:mem"
 
@@ -59,8 +60,9 @@ world_destroy :: proc(world: ^World) {
 
 world_clear :: proc(world: ^World) {
 	if world.defer_depth != 0 {
-		log.error("Cannot clear world while in deferred mode")
-		panic("ECS Deferred Mode Clear Violation")
+		msg := "Cannot clear world while in deferred mode"
+		log.fatal(msg)
+		panic(msg)
 	}
 	for pool in world.pool_list {
 		pool_clear(pool)
@@ -82,10 +84,9 @@ world_defer_begin :: proc(world: ^World) {
 
 world_defer_end :: proc(world: ^World) {
 	if world.defer_depth <= 0 {
-		log.error(
-			"Mismatched world_defer_end: defer_depth is already 0. Did you forget a world_defer_begin?",
-		)
-		panic("ECS Defer Underflow")
+		msg := "Mismatched world_defer_end: defer_depth is already 0. Did you forget a world_defer_begin?"
+		log.fatal(msg)
+		panic(msg)
 	}
 	world.defer_depth -= 1
 	if world.defer_depth == 0 {
@@ -95,8 +96,9 @@ world_defer_end :: proc(world: ^World) {
 
 world_flush :: proc(world: ^World) {
 	if world.defer_depth != 0 {
-		log.error("Cannot flush command buffer while world is still in deferred mode")
-		panic("ECS Deferred Mode Flush Violation")
+		msg := "Cannot flush command buffer while world is still in deferred mode"
+		log.fatal(msg)
+		panic(msg)
 	}
 	command_buffer_flush(world, &world.cmd_buffer)
 }
@@ -208,8 +210,9 @@ entity_destroy :: proc(world: ^World, entity: Entity) {
 entity_add_component :: proc(world: ^World, entity: Entity, component: $T) {
 	pool, ok := world.component_pools[T]
 	if !ok {
-		log.errorf("Attempt to add unregistered component: %v", typeid_of(T))
-		panic("ECS Unregistered Component")
+		msg := fmt.tprintf("Attempt to add unregistered component: %v", typeid_of(T))
+		log.fatal(msg)
+		panic(msg)
 	}
 	if !entity_alive(world, entity) do return
 
@@ -255,8 +258,9 @@ entity_has_component :: #force_inline proc(world: ^World, entity: Entity, $T: ty
 entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
 	pool, ok := world.component_pools[T]
 	if !ok {
-		log.errorf("Attempt to remove unregistered component: %v", typeid_of(T))
-		panic("ECS Unregistered Component")
+		msg := fmt.tprintf("Attempt to remove unregistered component: %v", typeid_of(T))
+		log.fatal(msg)
+		panic(msg)
 	}
 	if !entity_alive(world, entity) do return
 
@@ -373,8 +377,9 @@ pool_init :: proc($T: typeid, initial_capacity: int, allocator: mem.Allocator) -
 		bytes_to_alloc := pool.capacity * pool.type_size
 		raw_mem, err := mem.alloc_bytes_non_zeroed(bytes_to_alloc, pool.type_align, allocator)
 		if err != .None {
-			log.errorf("CRITICAL ERROR: Out of memory to init pool for '%v'.", typeid_of(T))
-			panic("Out of memory")
+			msg := fmt.tprintf("Out of memory to init pool for '%v'.", typeid_of(T))
+			log.fatal(msg)
+			panic(msg)
 		}
 		pool.component_data = raw_data(raw_mem)
 	}
@@ -444,18 +449,26 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 	offset := entity.id & POOL_PAGE_MASK
 
 	if int(page_idx) >= len(pool.sparse_pages) {
-		resize(&pool.sparse_pages, int(page_idx) + 1)
+		err := resize(&pool.sparse_pages, int(page_idx) + 1)
+		if err != .None {
+			msg := "Failed to resize sparse pages array (OOM)"
+			log.fatal(msg)
+			panic(msg)
+		}
 	}
 
 	if pool.sparse_pages[page_idx] == nil {
 		new_page := new([POOL_PAGE_SIZE]u32, pool.allocator)
+		if new_page == nil {
+			msg := "Failed to allocate new sparse page (OOM)"
+			log.fatal(msg)
+			panic(msg)
+		}
 		mem.set(new_page, 0xFF, size_of([POOL_PAGE_SIZE]u32))
 		pool.sparse_pages[page_idx] = new_page
 	}
 
 	dense_idx := len(pool.dense)
-	pool.sparse_pages[page_idx][offset] = u32(dense_idx)
-	append(&pool.dense, entity)
 
 	if pool.type_size > 0 {
 		if dense_idx >= pool.capacity {
@@ -472,17 +485,21 @@ pool_add :: proc(pool: ^Component_Pool, entity: Entity, data: rawptr) {
 				pool.allocator,
 			)
 			if err != .None {
-				log.errorf("CRITICAL ERROR: Failed expanding pool to %d capacity.", new_cap)
-				panic("Out of memory")
+				msg := fmt.tprintf("Failed expanding pool to %d capacity.", new_cap)
+				log.fatal(msg)
+				panic(msg)
 			}
 			pool.component_data = new_mem
 			pool.capacity = new_cap
 		}
+	}
 
-		if data != nil {
-			dest := mem.ptr_offset(cast(^byte)pool.component_data, dense_idx * pool.type_size)
-			mem.copy(dest, data, pool.type_size)
-		}
+	pool.sparse_pages[page_idx][offset] = u32(dense_idx)
+	append(&pool.dense, entity)
+
+	if pool.type_size > 0 && data != nil {
+		dest := mem.ptr_offset(cast(^byte)pool.component_data, dense_idx * pool.type_size)
+		mem.copy(dest, data, pool.type_size)
 	}
 }
 
@@ -597,9 +614,11 @@ command_buffer_add_component :: proc(
 	when size_of(T) > 0 {
 		raw_mem, err := mem.dynamic_arena_alloc_non_zeroed(&cb.arena, size_of(T), align_of(T))
 		if err != .None || raw_mem == nil {
-			log.error("CRITICAL ERROR: Command Buffer Arena OOM")
-			panic("Out of memory")
+			msg := "Command Buffer Arena OOM"
+			log.fatal(msg)
+			panic(msg)
 		}
+
 		typed_ptr := cast(^T)raw_mem
 		typed_ptr^ = component
 		ptr = raw_mem

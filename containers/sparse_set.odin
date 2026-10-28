@@ -1,5 +1,6 @@
 package containers
 
+import "core:log"
 import "core:mem"
 
 // ============================================================================
@@ -87,20 +88,31 @@ sparse_set_get :: #force_inline proc(sset: ^Sparse_Set($T), id: u32) -> (^T, boo
 // ============================================================================
 
 sparse_set_insert :: proc(sset: ^Sparse_Set($T), id: u32, item: T) {
-	assert(
-		id != SPARSE_SET_INVALID_INDEX,
-		"Cannot insert reserved SPARSE_SET_INVALID_INDEX (max(u32))",
-	)
+	if id == SPARSE_SET_INVALID_INDEX {
+		msg := "Cannot insert reserved SPARSE_SET_INVALID_INDEX (max(u32))"
+		log.fatal(msg)
+		panic(msg)
+	}
 
 	page_idx := id >> SPARSE_SET_PAGE_SHIFT
 	offset := id & SPARSE_SET_PAGE_MASK
 
 	if int(page_idx) >= len(sset.sparse_pages) {
-		resize(&sset.sparse_pages, int(page_idx) + 1)
+		err := resize(&sset.sparse_pages, int(page_idx) + 1)
+		if err != .None {
+			msg := "Failed to resize sparse pages array (OOM)"
+			log.fatal(msg)
+			panic(msg)
+		}
 	}
 
 	if sset.sparse_pages[page_idx] == nil {
 		new_page := new([SPARSE_SET_PAGE_SIZE]u32, sset.allocator)
+		if new_page == nil {
+			msg := "Failed to allocate new sparse page (OOM)"
+			log.fatal(msg)
+			panic(msg)
+		}
 		mem.set(new_page, 0xFF, size_of([SPARSE_SET_PAGE_SIZE]u32))
 		sset.sparse_pages[page_idx] = new_page
 	}
