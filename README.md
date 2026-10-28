@@ -11,15 +11,15 @@ GDOC has zero external dependencies beyond the Odin programming language.
 
 ## Modules
 
-`
-
 ### ECS (Entity Component System)
 
 The first core module of GDOC is a high-performance, memory-efficient ECS designed around a sparse-set architecture:
 
 - **Cache-Friendly Storage**: Components are stored in contiguous memory for fast cache-coherent iterations.
-- **DOD-first Queries**: Raw memory slice extraction (`world_component_slice`) for ultra-fast, linear iteration without generic pointer-hopping or RTTI overhead.
+- **DOD-first Queries**: Raw memory slice extraction (`world_component_slice`) for ultra-fast, linear iteration without generic pointer-hopping.
+- **O(1) Static Typed Views**: `view_get` and `entity_get_component` leverage compile-time type resolution (`size_of(T)`) to perform static stride scaling. This bypasses the generic type-erased multiplication in the hot loop, generating raw `LEA` assembly instructions as fast as standard array lookups.
 - **Generational Entities**: Safe entity handles that prevent stale references when entities are created and destroyed.
+- **Zero-Allocation Scene Reset**: `world_clear` wipes all entities and components in $O(N_{\text{dense}})$ while preserving generational history and allocated capacities across scenes.
 - **Deferred Command Buffer**: Queue entity creation, destruction, and component changes safely during system iterations.
 - **Tag Components**: Full support for zero-sized tag markers (ZSTs) without memory overhead.
 - **Custom Allocators**: Native support for Odin allocators (arenas, temporary allocators, tracking).
@@ -106,7 +106,7 @@ main :: proc() {
             pos.y += vel.vy * 0.016
 
             // Retrieve external data in O(1) from our standalone container
-            name, _ := containers.sparse_set_get(&player_names, ent.id)
+            name := containers.sparse_set_get(&player_names, ent.id)
             fmt.printfln("Enemy '%s' (ID: %d) moved to: (%.2f, %.2f)", name^, ent.id, pos.x, pos.y)
         }
     }
