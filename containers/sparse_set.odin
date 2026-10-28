@@ -29,9 +29,10 @@ sparse_set_init :: proc(
 	initial_capacity: int = 0,
 	allocator := context.allocator,
 ) {
+	cap := max(initial_capacity, 0)
 	sset.allocator = allocator
-	sset.dense = make([dynamic]T, 0, initial_capacity, allocator)
-	sset.dense_ids = make([dynamic]u32, 0, initial_capacity, allocator)
+	sset.dense = make([dynamic]T, 0, cap, allocator)
+	sset.dense_ids = make([dynamic]u32, 0, cap, allocator)
 	sset.sparse_pages = make([dynamic]Sparse_Set_Page, allocator)
 }
 
@@ -42,13 +43,20 @@ sparse_set_destroy :: proc(sset: ^Sparse_Set($T)) {
 	delete(sset.sparse_pages)
 	delete(sset.dense_ids)
 	delete(sset.dense)
+	sset^ = {}
 }
 
 // ============================================================================
 // QUERIES
 // ============================================================================
 
-sparse_set_has :: proc(sset: ^Sparse_Set($T), id: u32) -> bool {
+@(require_results)
+sparse_set_len :: #force_inline proc(sset: ^Sparse_Set($T)) -> int {
+	return len(sset.dense)
+}
+
+@(require_results)
+sparse_set_has :: #force_inline proc(sset: ^Sparse_Set($T), id: u32) -> bool {
 	page_idx := id >> SPARSE_SET_PAGE_SHIFT
 	offset := id & SPARSE_SET_PAGE_MASK
 
@@ -59,7 +67,8 @@ sparse_set_has :: proc(sset: ^Sparse_Set($T), id: u32) -> bool {
 	return page[offset] != SPARSE_SET_INVALID_INDEX
 }
 
-sparse_set_get :: proc(sset: ^Sparse_Set($T), id: u32) -> (^T, bool) {
+@(require_results)
+sparse_set_get :: #force_inline proc(sset: ^Sparse_Set($T), id: u32) -> (^T, bool) #optional_ok {
 	page_idx := id >> SPARSE_SET_PAGE_SHIFT
 	offset := id & SPARSE_SET_PAGE_MASK
 
@@ -78,6 +87,11 @@ sparse_set_get :: proc(sset: ^Sparse_Set($T), id: u32) -> (^T, bool) {
 // ============================================================================
 
 sparse_set_insert :: proc(sset: ^Sparse_Set($T), id: u32, item: T) {
+	assert(
+		id != SPARSE_SET_INVALID_INDEX,
+		"Cannot insert reserved SPARSE_SET_INVALID_INDEX (max(u32))",
+	)
+
 	page_idx := id >> SPARSE_SET_PAGE_SHIFT
 	offset := id & SPARSE_SET_PAGE_MASK
 
@@ -134,8 +148,10 @@ sparse_set_remove :: proc(sset: ^Sparse_Set($T), id: u32) {
 }
 
 sparse_set_clear :: proc(sset: ^Sparse_Set($T)) {
-	for page in sset.sparse_pages {
-		if page != nil do mem.set(page, 0xFF, size_of([SPARSE_SET_PAGE_SIZE]u32))
+	for id in sset.dense_ids {
+		page_idx := id >> SPARSE_SET_PAGE_SHIFT
+		offset := id & SPARSE_SET_PAGE_MASK
+		sset.sparse_pages[page_idx][offset] = SPARSE_SET_INVALID_INDEX
 	}
 	clear(&sset.dense)
 	clear(&sset.dense_ids)
@@ -145,10 +161,12 @@ sparse_set_clear :: proc(sset: ^Sparse_Set($T)) {
 // RAW SLICES (DOD ITERATION)
 // ============================================================================
 
-sparse_set_values :: proc(sset: ^Sparse_Set($T)) -> []T {
+@(require_results)
+sparse_set_values :: #force_inline proc(sset: ^Sparse_Set($T)) -> []T {
 	return sset.dense[:]
 }
 
-sparse_set_ids :: proc(sset: ^Sparse_Set($T)) -> []u32 {
+@(require_results)
+sparse_set_ids :: #force_inline proc(sset: ^Sparse_Set($T)) -> []u32 {
 	return sset.dense_ids[:]
 }

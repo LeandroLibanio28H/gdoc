@@ -24,14 +24,16 @@ test_sparse_set_basics :: proc(t: ^testing.T) {
 	val, ok := sparse_set_get(&set, 25)
 	testing.expect(t, ok && val^ == 250, "ID 25 value should be 250")
 
-	// Sobrescrever valor
+	// Sobrescrever valor (testando também #optional_ok sem o booleano)
 	sparse_set_insert(&set, 25, 300)
-	val2, _ := sparse_set_get(&set, 25)
-	testing.expect(t, val2^ == 300, "ID 25 value should be updated to 300")
+	val2 := sparse_set_get(&set, 25)
+	testing.expect(t, val2 != nil && val2^ == 300, "ID 25 value should be updated to 300")
+	testing.expect(t, sparse_set_len(&set) == 2, "Sparse set length should be 2")
 
 	// Teste de Deleção (Swap and Pop)
 	sparse_set_remove(&set, 10)
 	testing.expect(t, !sparse_set_has(&set, 10), "ID 10 should be deleted")
+	testing.expect(t, sparse_set_len(&set) == 1, "Sparse set length should be 1 after removal")
 
 	// Checar array denso
 	values := sparse_set_values(&set)
@@ -68,7 +70,7 @@ test_sparse_set_paging :: proc(t: ^testing.T) {
 
 	sparse_set_clear(&set)
 	testing.expect(t, !sparse_set_has(&set, 2048), "ID 2048 should be gone after clear")
-	testing.expect(t, len(sparse_set_values(&set)) == 0, "Dense array should be empty after clear")
+	testing.expect(t, sparse_set_len(&set) == 0, "Dense array should be empty after clear")
 
 	sparse_set_destroy(&set)
 
