@@ -61,15 +61,23 @@ world_defer_begin :: proc(world: ^World) {
 }
 
 world_defer_end :: proc(world: ^World) {
-	if world.defer_depth > 0 {
-		world.defer_depth -= 1
-		if world.defer_depth == 0 {
-			world_flush(world)
-		}
+	if world.defer_depth <= 0 {
+		log.error(
+			"Mismatched world_defer_end: defer_depth is already 0. Did you forget a world_defer_begin?",
+		)
+		panic("ECS Defer Underflow")
+	}
+	world.defer_depth -= 1
+	if world.defer_depth == 0 {
+		world_flush(world)
 	}
 }
 
 world_flush :: proc(world: ^World) {
+	if world.defer_depth != 0 {
+		log.error("Cannot flush command buffer while world is still in deferred mode")
+		panic("ECS Deferred Mode Flush Violation")
+	}
 	command_buffer_flush(world, &world.cmd_buffer)
 }
 
@@ -217,6 +225,34 @@ entity_remove_component :: proc(world: ^World, entity: Entity, $T: typeid) {
 	}
 
 	entity_remove_component_immediate(world, entity, tid)
+}
+
+// ============================================================================
+// COMPONENT VIEWS (FAST PATH QUERIES)
+// ============================================================================
+
+Component_View :: struct($T: typeid) {
+	world: ^World,
+	pool:  ^Component_Pool,
+}
+
+world_component_view :: proc(world: ^World, $T: typeid) -> Component_View(T) {
+	pool := world.component_pools[T]
+	return Component_View(T){world = world, pool = pool}
+}
+
+view_get :: proc(view: Component_View($T), entity: Entity) -> ^T {
+	if view.pool == nil do return nil
+	if !entity_alive(view.world, entity) do return nil
+	raw_ptr := pool_get(view.pool, entity)
+	if raw_ptr == nil do return nil
+	return cast(^T)(raw_ptr)
+}
+
+view_has :: proc(view: Component_View($T), entity: Entity) -> bool {
+	if view.pool == nil do return false
+	if !entity_alive(view.world, entity) do return false
+	return pool_has(view.pool, entity)
 }
 
 // ============================================================================
@@ -443,19 +479,16 @@ Command_Kind :: enum {
 
 @(private)
 Command :: struct {
-	kind:        Command_Kind,
-	entity:      Entity,
-	comp_type:   typeid,
-	data_offset: int,
-	data_size:   int,
+	kind:      Command_Kind,
+	entity:    Entity,
+	comp_type: typeid,
+	data:      rawptr,
 }
 
 @(private)
 Command_Buffer :: struct {
 	commands:  [dynamic]Command,
-	data:      []byte,
-	data_len:  int,
-	data_cap:  int,
+	arena:     mem.Dynamic_Arena,
 	allocator: mem.Allocator,
 }
 
@@ -468,57 +501,16 @@ command_buffer_init :: proc(
 	cb.allocator = allocator
 	cb.commands = make([dynamic]Command, 0, initial_capacity, allocator)
 
-	initial_data_cap := initial_capacity * 32
-	cb.data = nil
-	cb.data_cap = 0
-	if initial_data_cap > 0 {
-		raw_mem, err := mem.alloc(initial_data_cap, 64, allocator)
-		if err != .None {
-			log.errorf("CRITICAL ERROR: Out of memory to initialize command buffer data.")
-			panic("Out of memory")
-		}
-		cb.data = ([^]byte)(raw_mem)[:initial_data_cap]
-		cb.data_cap = initial_data_cap
-	}
-	cb.data_len = 0
+	// Dynamic Arena handles block allocations gracefully and automatically
+	mem.dynamic_arena_init(&cb.arena, allocator)
 }
 
 @(private)
 command_buffer_destroy :: proc(cb: ^Command_Buffer) {
 	delete(cb.commands)
-	if cb.data != nil {
-		mem.free(raw_data(cb.data), cb.allocator)
-		cb.data = nil
-	}
-	cb.data_len = 0
-	cb.data_cap = 0
+	mem.dynamic_arena_destroy(&cb.arena)
 }
 
-@(private)
-command_buffer_grow_data :: proc(cb: ^Command_Buffer, min_capacity: int) {
-	curr_cap := cb.data_cap
-	if min_capacity <= curr_cap do return
-
-	new_cap := max(256, curr_cap * 2)
-	for new_cap < min_capacity {
-		new_cap *= 2
-	}
-
-	new_mem, err := mem.resize_non_zeroed(
-		raw_data(cb.data),
-		cb.data_cap,
-		new_cap,
-		64,
-		cb.allocator,
-	)
-	if err != .None {
-		log.errorf("CRITICAL ERROR: Out of memory to expand command buffer.")
-		panic("Out of memory")
-	}
-
-	cb.data = ([^]byte)(new_mem)[:new_cap]
-	cb.data_cap = new_cap
-}
 
 @(private)
 command_buffer_destroy_entity :: proc(cb: ^Command_Buffer, entity: Entity) {
@@ -535,42 +527,22 @@ command_buffer_remove_component :: proc(cb: ^Command_Buffer, entity: Entity, $T:
 
 @(private)
 command_buffer_add_component :: proc(cb: ^Command_Buffer, entity: Entity, component: $T) {
-	elem_size := size_of(T)
-	elem_align := max(align_of(T), 1)
-	assert(elem_align <= 64, "Component alignment exceeds max alignment (64 bytes)")
+	ptr: rawptr = nil
 
-	offset := cb.data_len
-	aligned_offset := mem.align_forward_int(offset, elem_align)
-
-	padding := aligned_offset - offset
-	total_needed := cb.data_len + padding + elem_size
-
-	if total_needed > cb.data_cap {
-		command_buffer_grow_data(cb, total_needed)
-	}
-
-	if padding > 0 {
-		mem.zero(&cb.data[cb.data_len], padding)
-		cb.data_len += padding
-	}
-
-	comp_copy := component
-	data_start := cb.data_len
-
-	if elem_size > 0 {
-		mem.copy(&cb.data[data_start], &comp_copy, elem_size)
-		cb.data_len += elem_size
+	if size_of(T) > 0 {
+		allocator := mem.dynamic_arena_allocator(&cb.arena)
+		typed_ptr := new(T, allocator)
+		if typed_ptr == nil {
+			log.error("CRITICAL ERROR: Command Buffer Arena OOM")
+			panic("Out of memory")
+		}
+		typed_ptr^ = component
+		ptr = rawptr(typed_ptr)
 	}
 
 	append(
 		&cb.commands,
-		Command {
-			kind = .Add_Component,
-			entity = entity,
-			comp_type = typeid_of(T),
-			data_offset = data_start,
-			data_size = elem_size,
-		},
+		Command{kind = .Add_Component, entity = entity, comp_type = typeid_of(T), data = ptr},
 	)
 }
 
@@ -585,14 +557,10 @@ command_buffer_flush :: proc(world: ^World, cb: ^Command_Buffer) {
 			entity_remove_component_immediate(world, cmd.entity, cmd.comp_type)
 
 		case .Add_Component:
-			data_ptr: rawptr = nil
-			if cmd.data_size > 0 {
-				data_ptr = &cb.data[cmd.data_offset]
-			}
-			entity_add_component_immediate(world, cmd.entity, cmd.comp_type, data_ptr)
+			entity_add_component_immediate(world, cmd.entity, cmd.comp_type, cmd.data)
 		}
 	}
 
 	clear(&cb.commands)
-	cb.data_len = 0
+	mem.dynamic_arena_free_all(&cb.arena)
 }

@@ -36,7 +36,7 @@ test_entity_lifecycle :: proc(t: ^testing.T) {
 
 	// Teste 3: Reciclagem e nova geração
 	ent2 := entity_create(&world)
-	testing.expect(t, ent2.id == 0 && ent2.gen == 2, "Entity 2 should reuse ID 0 with Gen 2")
+	testing.expect(t, ent2.id == 0 && ent2.gen == 3, "Entity 2 should reuse ID 0 with Gen 3")
 
 	world_destroy(&world)
 

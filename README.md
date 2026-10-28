@@ -95,12 +95,13 @@ main :: proc() {
 
     // Query and update entities (Idiomatic DOD iteration)
     entities, positions := ecs.world_component_slice(&world, Position)
+    velocity_view := ecs.world_component_view(&world, Velocity)
 
     for ent, i in entities {
         pos := &positions[i] // Direct contiguous memory access
 
-        // Sparse access for secondary components
-        if vel := ecs.entity_get_component(&world, ent, Velocity); vel != nil {
+        // Sparse access for secondary components using Views (O(1) fast path)
+        if vel := ecs.view_get(velocity_view, ent); vel != nil {
             pos.x += vel.vx * 0.016
             pos.y += vel.vy * 0.016
 
