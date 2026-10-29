@@ -1,7 +1,7 @@
 package containers
 
-import "core:log"
-import "core:mem"
+import log "core:log"
+import mem "core:mem"
 
 // ============================================================================
 // CONSTANTS & TYPES

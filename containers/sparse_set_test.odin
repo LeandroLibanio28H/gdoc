@@ -1,7 +1,7 @@
 package containers
 
-import "core:mem"
-import "core:testing"
+import mem "core:mem"
+import testing "core:testing"
 
 @(test)
 test_sparse_set_basics :: proc(t: ^testing.T) {

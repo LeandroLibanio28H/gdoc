@@ -1,7 +1,7 @@
 package ecs
 
-import "core:mem"
-import "core:testing"
+import mem "core:mem"
+import testing "core:testing"
 
 Position :: struct {
 	x, y: f32,
