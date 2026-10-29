@@ -13,22 +13,20 @@ GDOC has zero external dependencies beyond the Odin programming language.
 
 ### ECS (Entity Component System)
 
-The first core module of GDOC is a high-performance, memory-efficient ECS designed around a sparse-set architecture:
+A high-performance, memory-efficient ECS based on a sparse-set architecture:
 
-- **Cache-Friendly Storage**: Components are stored in contiguous memory for fast cache-coherent iterations.
-- **DOD-first Queries**: Raw memory slice extraction (`world_component_slice`) for ultra-fast, linear iteration without generic pointer-hopping.
-- **O(1) Static Typed Views**: `view_get` and `entity_get_component` leverage compile-time type resolution (`size_of(T)`) to perform static stride scaling. This bypasses the generic type-erased multiplication in the hot loop, generating raw `LEA` assembly instructions as fast as standard array lookups.
-- **Generational Entities**: Safe entity handles that prevent stale references when entities are created and destroyed.
-- **Zero-Allocation Scene Reset**: `world_clear` wipes all entities and components in $O(N_{\text{dense}})$ while preserving generational history and allocated capacities across scenes.
-- **Deferred Command Buffer**: Queue entity creation, destruction, and component changes safely during system iterations.
-- **Tag Components**: Full support for zero-sized tag markers (ZSTs) without memory overhead.
-- **Custom Allocators**: Native support for Odin allocators (arenas, temporary allocators, tracking).
+- **Cache-Friendly Storage**: Components are stored in contiguous memory to maximize cache hits.
+- **DOD-first Queries**: Direct memory slice extraction for ultra-fast, linear iteration over components.
+- **O(1) Static Views**: Fast path for component lookups that bypasses type-erased overhead in the hot loop.
+- **Generational Entities**: Safe handles to prevent stale references and dangling pointers.
+- **Zero-Allocation Clear**: Rapidly resets scenes while preserving memory capacities to avoid allocation stuttering.
+- **Deferred Commands**: Safely queue entity and component mutations while iterating over data.
+- **Tag Components**: Zero-sized types (ZSTs) support with no memory overhead.
+- **Custom Allocators**: Native support for Odin allocators.
 
 ### Containers
 
-High-performance data structures built specifically for Data-Oriented Design (DOD).
-
-- **Sparse Set (`gdoc/containers`)**: Strongly-typed, platform-agnostic generic container `Sparse_Set($T)`. Unlike the internal ECS sparse set (which uses type erasure), this is built for developers to use directly. It features smart 4KB memory paging to prevent RAM bloat when dealing with disparate IDs.
+- **Sparse Set (`gdoc/containers`)**: Platform-agnostic generic container featuring smart memory paging to map disparate IDs without RAM bloat.
 
 ---
 
@@ -127,30 +125,28 @@ main :: proc() {
 
 ## Roadmap
 
-GDOC is continuously evolving to provide a full suite of low-level tools for game developers. Here is our progress and planned features:
-
 ### Core Systems
 
 - [x] **ECS (Entity Component System)**: High-performance, generational sparse-set ECS.
-- [ ] **Task Graph / Job System (`gdoc/jobs`)**: A game-focused thread-pool designed to batch and process massive arrays of ECS data concurrently across multiple CPU cores without lock contention.
+- [ ] **Job System (`gdoc/jobs`)**: Thread-pool to process ECS data concurrently.
 
 ### Advanced Containers (`gdoc/containers`)
 
 - [x] **Sparse Set**: Standalone, paged sparse set for mapping arbitrary IDs to contiguous data without RAM bloat.
-- [ ] **Slot Map (Generational Arena)**: Generates safe `Handle { index, generation }` keys to prevent dangling pointers. Essential for managing the lifecycle of Assets, Textures, and Network connections.
-- [ ] **Generic Pool (Free-list)**: A true `O(1)` allocation/deallocation structure without index fragmentation. Perfect for high-churn, request-based objects where linear iteration isn't needed.
-- [ ] **Ring Buffer**: Circular buffers for input event queues and audio streaming.
+- [ ] **Lock-Free Ring Buffer (MPMC Queue)**: An atomic-based, mutex-free circular queue. Essential for building high-performance Job Systems without thread contention.
+- [ ] **Flat B-Tree**: An array-based tree structure that maintains sorted data (like Z-depth for rendering) without pointer-chasing, keeping the CPU cache hot.
+- [ ] **Dense Grid (2D/3D)**: A DOD-wrapper around a 1D array to handle multi-dimensional spatial data (like Tilemaps or Voxel chunks) while respecting spatial locality (Morton/Z-Curve).
 
 ### Spatial Partitioning (`gdoc/spatial`)
 
-- [ ] **Spatial Hash Grid**: Cache-friendly structure to map 2D/3D entities into a flat grid, enabling near-zero cost collision broad-phase tests.
-- [ ] **Linear QuadTree / Octree**: Pointer-free, DOD-first implementations for hierarchical space partitioning.
+- [ ] **Spatial Hash Grid**: Cache-friendly flat grid for broad-phase collisions.
+- [ ] **Linear QuadTree / Octree**: Pointer-free space partitioning.
 - [ ] **Math Primitives**: AABBs, OBBs, Frustum culling, and Ray/Sphere intersections.
 
-### Generic Asset Management (`gdoc/assets`)
+### Asset Management (`gdoc/assets`)
 
-- [ ] **Asset Cache**: Pure reference-counted asset lifecycle management.
-- [ ] **Passive Hot-Reloading**: Hooks and indirection layers to swap pointers (like shaders or textures) at runtime without crashing the engine.
+- [ ] **Asset Cache**: Reference-counted asset lifecycle management.
+- [ ] **Passive Hot-Reloading**: Hooks to swap pointers at runtime.
 
 ---
 
