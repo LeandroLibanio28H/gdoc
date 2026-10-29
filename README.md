@@ -1,6 +1,6 @@
 <img width="1664" height="768" alt="gdoc-logo" src="https://github.com/user-attachments/assets/60233324-51ce-4824-8f9b-6482d3843a1b" style="image-rendering: pixelated;" />
 
-**GDOC** is a modular, platform-agnostic library of utilities for game development in [Odin](https://odin-lang.org/), focused on performance, clarity, and reusability. It is not a monolithic game engine, but a collection of decoupled building blocks designed to help you construct your own specialized game engines.
+**GDOC** is a modular, platform-agnostic library of utilities for game development in [Odin](https://odin-lang.org/), focused on performance, clarity, and reusability.
 
 GDOC has zero external dependencies beyond the Odin programming language.
 
