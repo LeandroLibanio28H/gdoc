@@ -11,7 +11,7 @@ GDOC has zero external dependencies beyond the Odin programming language.
 
 ## Modules
 
-### ECS (Entity Component System)
+### ECS - Entity Component System (`gdoc/ecs`)
 
 A high-performance, memory-efficient ECS based on a sparse-set architecture:
 
@@ -24,9 +24,10 @@ A high-performance, memory-efficient ECS based on a sparse-set architecture:
 - **Tag Components**: Zero-sized types (ZSTs) support with no memory overhead.
 - **Custom Allocators**: Native support for Odin allocators.
 
-### Containers
+### Containers (`gdoc/containers`)
 
-- **Sparse Set (`gdoc/containers`)**: Platform-agnostic generic container featuring smart memory paging to map disparate IDs without RAM bloat.
+- **Sparse Set**: Platform-agnostic generic container featuring smart memory paging to map disparate IDs without RAM bloat.
+- **MPMC Queue**: Lock-free, atomic-based ring buffer for multi-producer, multi-consumer scenarios.
 
 ---
 
@@ -133,7 +134,7 @@ main :: proc() {
 ### Advanced Containers (`gdoc/containers`)
 
 - [x] **Sparse Set**: Standalone, paged sparse set for mapping arbitrary IDs to contiguous data without RAM bloat.
-- [ ] **Lock-Free Ring Buffer (MPMC Queue)**: An atomic-based, mutex-free circular queue. Essential for building high-performance Job Systems without thread contention.
+- [x] **Lock-Free Ring Buffer (MPMC Queue)**: An atomic-based, mutex-free circular queue. Essential for building high-performance Job Systems without thread contention.
 - [ ] **Flat B-Tree**: An array-based tree structure that maintains sorted data (like Z-depth for rendering) without pointer-chasing, keeping the CPU cache hot.
 - [ ] **Dense Grid (2D/3D)**: A DOD-wrapper around a 1D array to handle multi-dimensional spatial data (like Tilemaps or Voxel chunks) while respecting spatial locality (Morton/Z-Curve).
 

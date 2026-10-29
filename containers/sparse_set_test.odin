@@ -59,10 +59,10 @@ test_sparse_set_paging :: proc(t: ^testing.T) {
 	set: Sparse_Set(f32)
 	sparse_set_init(&set)
 
-	// Inserir IDs muito distantes para forçar a criação de múltiplas Páginas de 4KB (Page Shift)
+	// Inserir IDs muito distantes para forçar a criação de múltiplas Páginas
 	sparse_set_insert(&set, 5, 5.0)
 	sparse_set_insert(&set, 2048, 2048.0) // Vai forçar a alocação da Página 2
-	sparse_set_insert(&set, 1000000, 1.0) // Vai forçar a alocação da Página 976, sem estourar a RAM!
+	sparse_set_insert(&set, 1000000, 1.0) // Vai forçar a alocação da Página 976
 
 	testing.expect(t, sparse_set_has(&set, 5), "Should have ID 5")
 	testing.expect(t, sparse_set_has(&set, 2048), "Should have ID 2048")
